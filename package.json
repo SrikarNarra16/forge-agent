@@ -1,0 +1,105 @@
+{
+  "name": "forge-agent",
+  "displayName": "Forge",
+  "description": "Forge: VS Code agent on TrueForge",
+  "version": "0.0.1",
+  "publisher": "forge-local",
+  "license": "MIT",
+  "private": true,
+  "repository": { "type": "git", "url": "https://github.com/SrikarNarra16/forge-agent.git" },
+  "engines": { "vscode": "^1.95.0" },
+  "categories": ["AI", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "forge", "title": "Forge", "icon": "media/forge.svg" }]
+    },
+    "views": {
+      "forge": [{ "id": "forge.agentView", "name": "Agent", "type": "webview" }]
+    },
+    "commands": [
+      { "command": "forge.inlineEdit", "title": "Forge: Edit Selection…" },
+      { "command": "forge.openAgent", "title": "Forge: Open Agent" },
+      { "command": "forge.stop", "title": "Forge: Stop" },
+      { "command": "forge.undoLastRun", "title": "Forge: Undo Last Agent Run" },
+      { "command": "forge.switchModel", "title": "Forge: Switch Model" },
+      { "command": "forge.smokeTest", "title": "Forge: Smoke Test" },
+      { "command": "forge.reviewAcceptAll", "title": "Forge: Accept All Hunks" },
+      { "command": "forge.reviewRejectAll", "title": "Forge: Reject All Hunks" },
+      { "command": "forge.reviewAcceptHunk", "title": "Forge: Accept Hunk" },
+      { "command": "forge.reviewRejectHunk", "title": "Forge: Reject Hunk" }
+    ],
+    "keybindings": [
+      {
+        "command": "forge.inlineEdit",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k",
+        "when": "editorHasSelection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "forge.inlineEdit", "when": "editorHasSelection", "group": "navigation@100" }
+      ],
+      "commandPalette": [
+        { "command": "forge.reviewAcceptAll", "when": "false" },
+        { "command": "forge.reviewRejectAll", "when": "false" },
+        { "command": "forge.reviewAcceptHunk", "when": "false" },
+        { "command": "forge.reviewRejectHunk", "when": "false" }
+      ]
+    },
+    "configuration": {
+      "title": "Forge",
+      "properties": {
+        "forge.trueforge.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:8790",
+          "description": "Base URL of the local TrueForge server."
+        },
+        "forge.models": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["deepseek/flash", "groq/gpt-oss-120b"],
+          "description": "TrueForge model names (provider/model). Order = fallback chain: the first is primary."
+        },
+        "forge.contextBudgetTokens": {
+          "type": "number",
+          "default": 6000,
+          "description": "Token budget for automatically injected context."
+        },
+        "forge.rollbackOnCancel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Roll back edits applied during a run when the run is cancelled."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/ui/webview",
+    "test": "vitest run",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@truefoundry/trueforge-sdk": "^0.182.0",
+    "diff": "^9.0.0",
+    "ignore": "^7.0.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/vscode": "~1.95.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^4.1.12"
+  }
+}

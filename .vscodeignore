@@ -1,0 +1,10 @@
+**
+!dist/extension.js
+!dist/webview.js
+!dist/webview.css
+!media/**
+!agents/*.json
+!trueforge/*.json
+!package.json
+!README.md
+!LICENSE

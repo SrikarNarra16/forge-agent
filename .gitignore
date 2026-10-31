@@ -4,3 +4,5 @@ dist
 .env
 trueforge/models.local.json
 *.vsix
+.vscode-test
+coverage

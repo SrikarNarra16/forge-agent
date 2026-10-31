@@ -1,0 +1,35 @@
+{
+  "_comment": "Example model providers for `npm run tf:setup`. API keys are NEVER stored here: `apiKeyEnv` names the environment variable that holds the key. Copy to models.local.json (gitignored) to customise.",
+  "providers": [
+    {
+      "type": "custom",
+      "name": "deepseek",
+      "base_url": "https://api.deepseek.com/v1",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "models": [
+        { "name": "flash", "model_id": "deepseek-flash", "properties": { "context_length": 64000, "max_output_tokens": 8000 } },
+        { "name": "v4-pro", "model_id": "deepseek-v4-pro", "properties": { "context_length": 64000, "max_output_tokens": 8000 } }
+      ]
+    },
+    {
+      "type": "custom",
+      "name": "groq",
+      "base_url": "https://api.groq.com/openai/v1",
+      "apiKeyEnv": "GROQ_API_KEY",
+      "models": [
+        { "name": "gpt-oss-120b", "model_id": "openai/gpt-oss-120b", "properties": { "context_length": 32000, "max_output_tokens": 4000 } }
+      ]
+    },
+    {
+      "_comment": "DEMO ONLY, for Task C: opt-in. Unreachable endpoint with a fake key, used to show the failure + fallback path. Do not register for normal use.",
+      "type": "custom",
+      "name": "broken-endpoint",
+      "base_url": "http://127.0.0.1:9/v1",
+      "apiKeyEnv": "BROKEN_ENDPOINT_FAKE_KEY",
+      "demoOnly": true,
+      "models": [
+        { "name": "broken", "model_id": "does-not-exist", "properties": { "context_length": 32000, "max_output_tokens": 4000 } }
+      ]
+    }
+  ]
+}
