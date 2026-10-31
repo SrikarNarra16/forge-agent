@@ -5,6 +5,6 @@
     "types": ["node", "vscode"],
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "esbuild.mjs", "vitest.config.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "esbuild.mjs", "vitest.config.mts"],
   "exclude": ["src/ui/webview", "node_modules", "dist"]
 }
