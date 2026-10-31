@@ -6,29 +6,81 @@
   "publisher": "forge-local",
   "license": "MIT",
   "private": true,
-  "repository": { "type": "git", "url": "https://github.com/SrikarNarra16/forge-agent.git" },
-  "engines": { "vscode": "^1.95.0" },
-  "categories": ["AI", "Other"],
-  "activationEvents": ["onStartupFinished"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SrikarNarra16/forge-agent.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [{ "id": "forge", "title": "Forge", "icon": "media/forge.svg" }]
+      "activitybar": [
+        {
+          "id": "forge",
+          "title": "Forge",
+          "icon": "media/forge.svg"
+        }
+      ]
     },
     "views": {
-      "forge": [{ "id": "forge.agentView", "name": "Agent", "type": "webview" }]
+      "forge": [
+        {
+          "id": "forge.agentView",
+          "name": "Agent",
+          "type": "webview"
+        }
+      ]
     },
     "commands": [
-      { "command": "forge.inlineEdit", "title": "Forge: Edit Selection…" },
-      { "command": "forge.openAgent", "title": "Forge: Open Agent" },
-      { "command": "forge.stop", "title": "Forge: Stop" },
-      { "command": "forge.undoLastRun", "title": "Forge: Undo Last Agent Run" },
-      { "command": "forge.switchModel", "title": "Forge: Switch Model" },
-      { "command": "forge.smokeTest", "title": "Forge: Smoke Test" },
-      { "command": "forge.reviewAcceptAll", "title": "Forge: Accept All Hunks" },
-      { "command": "forge.reviewRejectAll", "title": "Forge: Reject All Hunks" },
-      { "command": "forge.reviewAcceptHunk", "title": "Forge: Accept Hunk" },
-      { "command": "forge.reviewRejectHunk", "title": "Forge: Reject Hunk" }
+      {
+        "command": "forge.inlineEdit",
+        "title": "Forge: Edit Selection\u2026"
+      },
+      {
+        "command": "forge.openAgent",
+        "title": "Forge: Open Agent"
+      },
+      {
+        "command": "forge.stop",
+        "title": "Forge: Stop"
+      },
+      {
+        "command": "forge.undoLastRun",
+        "title": "Forge: Undo Last Agent Run"
+      },
+      {
+        "command": "forge.switchModel",
+        "title": "Forge: Switch Model"
+      },
+      {
+        "command": "forge.smokeTest",
+        "title": "Forge: Smoke Test"
+      },
+      {
+        "command": "forge.reviewAcceptAll",
+        "title": "Forge: Accept All Hunks"
+      },
+      {
+        "command": "forge.reviewRejectAll",
+        "title": "Forge: Reject All Hunks"
+      },
+      {
+        "command": "forge.reviewAcceptHunk",
+        "title": "Forge: Accept Hunk"
+      },
+      {
+        "command": "forge.reviewRejectHunk",
+        "title": "Forge: Reject Hunk"
+      }
     ],
     "keybindings": [
       {
@@ -40,13 +92,29 @@
     ],
     "menus": {
       "editor/context": [
-        { "command": "forge.inlineEdit", "when": "editorHasSelection", "group": "navigation@100" }
+        {
+          "command": "forge.inlineEdit",
+          "when": "editorHasSelection",
+          "group": "navigation@100"
+        }
       ],
       "commandPalette": [
-        { "command": "forge.reviewAcceptAll", "when": "false" },
-        { "command": "forge.reviewRejectAll", "when": "false" },
-        { "command": "forge.reviewAcceptHunk", "when": "false" },
-        { "command": "forge.reviewRejectHunk", "when": "false" }
+        {
+          "command": "forge.reviewAcceptAll",
+          "when": "false"
+        },
+        {
+          "command": "forge.reviewRejectAll",
+          "when": "false"
+        },
+        {
+          "command": "forge.reviewAcceptHunk",
+          "when": "false"
+        },
+        {
+          "command": "forge.reviewRejectHunk",
+          "when": "false"
+        }
       ]
     },
     "configuration": {
@@ -59,8 +127,13 @@
         },
         "forge.models": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["deepseek/flash", "groq/gpt-oss-120b"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "deepseek/flash",
+            "groq/gpt-oss-120b"
+          ],
           "description": "TrueForge model names (provider/model). Order = fallback chain: the first is primary."
         },
         "forge.contextBudgetTokens": {
@@ -83,7 +156,9 @@
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/ui/webview",
     "test": "vitest run",
     "package": "vsce package --no-dependencies",
-    "vscode:prepublish": "npm run build"
+    "vscode:prepublish": "npm run build",
+    "tf:start": "bash trueforge/start.sh",
+    "tf:setup": "tsx scripts/tf-setup.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -98,6 +173,7 @@
     "@vscode/vsce": "^4.1.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.14.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",
     "vitest": "^4.1.12"
