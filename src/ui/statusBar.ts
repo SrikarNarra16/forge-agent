@@ -19,6 +19,10 @@ export class TrueForgeStatus implements vscode.Disposable {
   private inFlight: AbortController | undefined;
   private disposed = false;
   private current: ConnectionState = "unknown";
+  private readonly changed = new vscode.EventEmitter<ConnectionState>();
+
+  /** Fires after a check changes the state (not for the initial "unknown"). */
+  readonly onDidChangeState: vscode.Event<ConnectionState> = this.changed.event;
 
   constructor(private readonly log: Logger) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -58,8 +62,10 @@ export class TrueForgeStatus implements vscode.Disposable {
       this.inFlight = undefined;
     }
     if (this.disposed) return;
-    if (next !== this.current) this.log.info(`TrueForge ${next} (${url})`);
+    const changed = next !== this.current;
+    if (changed) this.log.info(`TrueForge ${next} (${url})`);
     this.render(next);
+    if (changed) this.changed.fire(next);
   }
 
   dispose(): void {
@@ -68,6 +74,7 @@ export class TrueForgeStatus implements vscode.Disposable {
     this.timer = undefined;
     this.inFlight?.abort();
     this.configListener.dispose();
+    this.changed.dispose();
     this.item.dispose();
   }
 

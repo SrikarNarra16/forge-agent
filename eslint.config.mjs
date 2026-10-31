@@ -11,4 +11,14 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-imports": "error",
     },
   },
+  {
+    // These modules run outside the editor too (scripts/tf-setup.ts, vitest), so they must stay vscode-free.
+    files: ["src/trueforge/client.ts", "src/trueforge/providers.ts", "src/mcp/**/*.ts", "scripts/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { paths: [{ name: "vscode", message: "This module is shared with scripts/tests; keep it free of the vscode API." }] },
+      ],
+    },
+  },
 );

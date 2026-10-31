@@ -1,0 +1,22 @@
+{
+  "name": "forge-agent",
+  "description": "Forge coding agent (P02: ping smoke test)",
+  "manifest": {
+    "model": { "name": "deepseek/flash" },
+    "instructions": "You are Forge, a coding agent. For now: when asked, call the ping tool and report exactly what it returned.",
+    "mcp_servers": [
+      {
+        "name": "forge-editor",
+        "enable_tools": ["@all"],
+        "require_approval_for_tools": [],
+        "preload": true
+      }
+    ],
+    "config": {
+      "iteration_limit": 20,
+      "dynamic_sub_agents": { "enabled": false },
+      "ask_user_questions": { "enabled": false },
+      "generative_ui": { "enabled": false }
+    }
+  }
+}
