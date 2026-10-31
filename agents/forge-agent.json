@@ -1,22 +1,32 @@
 {
   "name": "forge-agent",
-  "description": "Forge coding agent (P02: ping smoke test)",
+  "description": "Forge coding agent (read-only tools; write tools arrive in P05)",
   "manifest": {
-    "model": { "name": "deepseek/flash" },
-    "instructions": "You are Forge, a coding agent. For now: when asked, call the ping tool and report exactly what it returned.",
+    "model": {
+      "name": "deepseek/flash"
+    },
+    "instructions": "You are Forge, a coding agent inside VS Code working on the user's workspace. Orient with repo_map/search_code, read only what you need with read_file ranges, always give a short why. Answer concisely and cite file:line.",
     "mcp_servers": [
       {
         "name": "forge-editor",
-        "enable_tools": ["@all"],
+        "enable_tools": [
+          "@all"
+        ],
         "require_approval_for_tools": [],
         "preload": true
       }
     ],
     "config": {
       "iteration_limit": 20,
-      "dynamic_sub_agents": { "enabled": false },
-      "ask_user_questions": { "enabled": false },
-      "generative_ui": { "enabled": false }
+      "dynamic_sub_agents": {
+        "enabled": false
+      },
+      "ask_user_questions": {
+        "enabled": false
+      },
+      "generative_ui": {
+        "enabled": false
+      }
     }
   }
 }

@@ -66,6 +66,10 @@
         "title": "Forge: Smoke Test"
       },
       {
+        "command": "forge.smokeTestCode",
+        "title": "Forge: Smoke Test (code question)"
+      },
+      {
         "command": "forge.reviewAcceptAll",
         "title": "Forge: Accept All Hunks"
       },

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { TrueForge } from "@truefoundry/trueforge-sdk";
 import type { McpServerHandle } from "../mcp/server";
+import { TOOL_NAMES } from "../mcp/tools/index";
 import type { Logger } from "../util/log";
 import {
   FORGE_EDITOR_SERVER,
@@ -39,8 +40,6 @@ export interface BootstrapDeps {
   /** Called per run so a changed forge.trueforge.baseUrl is picked up. */
   getClient: () => TrueForge;
 }
-
-const REQUIRED_TOOL = "ping";
 
 export class Bootstrapper {
   private running: Promise<BootstrapResult> | undefined;
@@ -112,8 +111,9 @@ export class Bootstrapper {
     try {
       const tools = await listMcpToolNames(client, FORGE_EDITOR_SERVER);
       log.info(`TrueForge lists tools from ${FORGE_EDITOR_SERVER}: ${tools.join(", ") || "(none)"}`);
-      if (!tools.includes(REQUIRED_TOOL)) {
-        throw new Error(`tool "${REQUIRED_TOOL}" missing from ${tools.length} listed tool(s)`);
+      const missing = TOOL_NAMES.filter((name) => !tools.includes(name));
+      if (missing.length > 0) {
+        throw new Error(`TrueForge does not list these tools: ${missing.join(", ")} (it lists ${tools.length})`);
       }
     } catch (err) {
       if (isUnreachable(err)) {
@@ -134,7 +134,7 @@ export class Bootstrapper {
       return finish(false, "agents", `Could not save agents in TrueForge: ${describeError(err)}`);
     }
 
-    return finish(true, "done", `${agents.length} agent(s), tool ${REQUIRED_TOOL} verified`);
+    return finish(true, "done", `${agents.length} agent(s), ${TOOL_NAMES.length} tools verified`);
   }
 
   private mcpFailure(stage: "mcp-register" | "mcp-verify", url: string, err: unknown, agents: AgentFile[]): BootstrapResult {

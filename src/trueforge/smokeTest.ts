@@ -16,8 +16,19 @@ export interface SmokeTestDeps {
   getBaseUrl: () => string;
 }
 
-const PROMPT = "Use the ping tool and tell me what it returned.";
+export type SmokeTestKind = "ping" | "code";
+
+const SMOKE_TESTS: Record<SmokeTestKind, { title: string; prompt: string }> = {
+  ping: { title: "Smoke test", prompt: "Use the ping tool and tell me what it returned." },
+  code: {
+    title: "Smoke test (code question)",
+    prompt: "Find get_debug_flag in this workspace and explain exactly which values it treats as false.",
+  },
+};
+
 const PREVIEW_CHARS = 300;
+/** Tool-call arguments are logged longer than other previews so the model's `why` stays visible. */
+const TOOL_ARGS_PREVIEW_CHARS = 500;
 
 type Event = TrueForgeApi.TurnStreamingEvent;
 type ModelMessage = TrueForgeApi.ModelMessageEvent;
@@ -36,7 +47,7 @@ export function contentText(content: ModelMessage["content"]): string {
 
 function describeMessage(msg: ModelMessage): string {
   const text = contentText(msg.content);
-  const calls = (msg.toolCalls ?? []).map((c) => `${c.function.name}(${preview(c.function.arguments, 200)})`);
+  const calls = (msg.toolCalls ?? []).map((c) => `${c.function.name}(${preview(c.function.arguments, TOOL_ARGS_PREVIEW_CHARS)})`);
   return [`model.message ${msg.id.slice(-8)}`, text ? `text="${preview(text)}"` : undefined, calls.length ? `tool_calls=[${calls.join(", ")}]` : undefined]
     .filter(Boolean)
     .join(" ");
@@ -110,14 +121,15 @@ function hintFor(message: string): string {
   return message;
 }
 
-export async function runSmokeTest(deps: SmokeTestDeps): Promise<void> {
+export async function runSmokeTest(deps: SmokeTestDeps, kind: SmokeTestKind = "ping"): Promise<void> {
   const { log, bootstrapper } = deps;
+  const { title, prompt } = SMOKE_TESTS[kind];
   const baseUrl = deps.getBaseUrl();
   log.show();
-  log.info(`--- Smoke test (${new Date().toISOString()}) against ${baseUrl}`);
+  log.info(`--- ${title} (${new Date().toISOString()}) against ${baseUrl}`);
 
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: "Forge smoke test", cancellable: true },
+    { location: vscode.ProgressLocation.Notification, title: `Forge ${title.toLowerCase()}`, cancellable: true },
     async (progress, cancel) => {
       progress.report({ message: "Preparing TrueForge…" });
       const ready = await bootstrapper.ensureReady();
@@ -152,7 +164,7 @@ export async function runSmokeTest(deps: SmokeTestDeps): Promise<void> {
         progress.report({ message: "Creating session…" });
         const { data: session } = await client.sessions.create({
           agent: { name: FORGE_AGENT_NAME },
-          metadata: { client: "forge-agent", purpose: "smoke-test" },
+          metadata: { client: "forge-agent", purpose: kind === "ping" ? "smoke-test" : "smoke-test-code" },
         });
         sessionId = session.id;
         const url = sessionUrl(baseUrl, session.id);
@@ -160,13 +172,13 @@ export async function runSmokeTest(deps: SmokeTestDeps): Promise<void> {
         log.info(`Session URL: ${url}`);
 
         progress.report({ message: "Agent running…" });
-        log.info(`> ${PROMPT}`);
-        const stream = await client.sessions.createTurnStream(session.id, { input: [{ type: "user.message", content: PROMPT }] });
+        log.info(`> ${prompt}`);
+        const stream = await client.sessions.createTurnStream(session.id, { input: [{ type: "user.message", content: prompt }] });
         const outcome = await consume(stream, log);
 
         if (outcome.status === "done" && outcome.answer) {
           log.info(`Answer: ${outcome.answer}`);
-          const choice = await vscode.window.showInformationMessage(`Forge smoke test: ${outcome.answer}`, "Open Session", "Show Log");
+          const choice = await vscode.window.showInformationMessage(`Forge ${title.toLowerCase()}: ${outcome.answer}`, "Open Session", "Show Log");
           if (choice === "Open Session") void vscode.env.openExternal(vscode.Uri.parse(url));
           if (choice === "Show Log") log.show();
         } else if (outcome.status === "error") {
