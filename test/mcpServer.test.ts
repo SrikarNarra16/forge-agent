@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startMcpServer, type McpServerHandle } from "../src/mcp/server";
+import { TOOL_NAMES } from "../src/mcp/tools/index";
+import { FIXTURE_FILES, FakeHost } from "./helpers/fakeHost";
 
 const TOKEN = "test-token";
 
@@ -9,7 +11,7 @@ describe("MCP server", () => {
   let handle: McpServerHandle;
 
   beforeEach(async () => {
-    handle = await startMcpServer({ token: TOKEN });
+    handle = await startMcpServer({ token: TOKEN, host: new FakeHost(FIXTURE_FILES) });
   });
   afterEach(async () => {
     await handle.dispose();
@@ -49,10 +51,12 @@ describe("MCP server", () => {
     await client.connect(transport);
     try {
       const tools = await client.listTools();
-      expect(tools.tools.map((t) => t.name)).toEqual(["ping"]);
-      expect(tools.tools[0]?.annotations?.readOnlyHint).toBe(true);
+      expect(tools.tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
+      expect(tools.tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
       const result = await client.callTool({ name: "ping", arguments: {} });
       expect(result.content).toEqual([{ type: "text", text: "pong from forge-editor" }]);
+      const read = await client.callTool({ name: "read_file", arguments: { path: "src/app/helpers.py", start: 4, end: 4, why: "check the server wiring" } });
+      expect(JSON.stringify(read.content)).toContain("def get_debug_flag");
     } finally {
       await client.close();
     }

@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
+import { VscodeHost } from "./host/vscodeHost";
 import { generateToken } from "./mcp/auth";
+import { McpEvents } from "./mcp/events";
 import { startMcpServer, type McpServerHandle } from "./mcp/server";
 import { Bootstrapper } from "./trueforge/bootstrap";
 import { createClient } from "./trueforge/client";
@@ -30,7 +32,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // The bearer token lives only in memory for this activation; it is never logged or persisted.
   const token = generateToken();
-  const mcp = startMcpServer({ token, log: (m) => log.info(m) });
+  const events = new McpEvents(); // read_file emits context:read here; the context panel subscribes in a later prompt
+  const mcp = startMcpServer({ token, host: new VscodeHost(), events, log: (m) => log.info(m) });
   mcpStarting = mcp;
   mcp.catch((err: unknown) => log.error("MCP server failed to start", err));
   const getClient = () => createClient(status.baseUrl);
@@ -46,12 +49,13 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(id, () => vscode.window.showInformationMessage(message)));
   }
 
+  const smokeDeps = { log, bootstrapper, getClient, getBaseUrl: () => status.baseUrl };
+
   context.subscriptions.push(
     vscode.commands.registerCommand("forge.openAgent", () => vscode.commands.executeCommand("forge.agentView.focus")),
     vscode.commands.registerCommand("forge.checkConnection", () => status.check()),
-    vscode.commands.registerCommand("forge.smokeTest", () =>
-      runSmokeTest({ log, bootstrapper, getClient, getBaseUrl: () => status.baseUrl }),
-    ),
+    vscode.commands.registerCommand("forge.smokeTest", () => runSmokeTest(smokeDeps, "ping")),
+    vscode.commands.registerCommand("forge.smokeTestCode", () => runSmokeTest(smokeDeps, "code")),
   );
 }
 

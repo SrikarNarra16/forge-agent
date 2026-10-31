@@ -3,6 +3,9 @@ import type { AddressInfo } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { checkBearer, type BearerToken } from "./auth";
+import { McpEvents } from "./events";
+import type { WorkspaceHost } from "./host";
+import { createToolDeps, type ToolBudgets, type ToolDeps } from "./tools/common";
 import { registerTools } from "./tools/index";
 
 /**
@@ -19,7 +22,12 @@ export interface McpServerHandle {
 
 export interface McpServerOptions {
   token: BearerToken;
-  /** Never receives the token or request bodies. */
+  /** Editor access for the tools (vscode implementation in production, in-memory fake in tests). */
+  host: WorkspaceHost;
+  /** Receives `context:read` events from read_file; a private bus is used when omitted. */
+  events?: McpEvents;
+  budgets?: Partial<ToolBudgets>;
+  /** Receives server and tool log lines (tool name, duration, argument summary). Never the token, request bodies or file contents. */
   log?: (message: string) => void;
 }
 
@@ -50,7 +58,7 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
 }
 
-async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse, host: WorkspaceHost, deps: ToolDeps): Promise<void> {
   let body: unknown;
   try {
     body = await readJsonBody(req);
@@ -59,7 +67,7 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse): P
     return rpcError(res, 400, -32700, "Parse error");
   }
   const server = new McpServer(SERVER_INFO);
-  registerTools(server);
+  registerTools(server, host, deps);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
     void transport.close();
@@ -70,7 +78,8 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse): P
 }
 
 export async function startMcpServer(options: McpServerOptions): Promise<McpServerHandle> {
-  const { token, log } = options;
+  const { token, host, log } = options;
+  const deps = createToolDeps({ log: (m) => log?.(m), events: options.events ?? new McpEvents(), ...(options.budgets ? { budgets: options.budgets } : {}) });
 
   const httpServer = http.createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
@@ -91,7 +100,7 @@ export async function startMcpServer(options: McpServerOptions): Promise<McpServ
       rpcError(res, 405, -32000, "Method not allowed (stateless server: POST only)", { allow: "POST" });
       return;
     }
-    handleMcp(req, res).catch((err: unknown) => {
+    handleMcp(req, res, host, deps).catch((err: unknown) => {
       log?.(`MCP request failed: ${err instanceof Error ? err.message : String(err)}`);
       rpcError(res, 500, -32603, "Internal server error");
     });
