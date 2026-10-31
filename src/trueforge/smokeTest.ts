@@ -132,7 +132,8 @@ export async function runSmokeTest(deps: SmokeTestDeps, kind: SmokeTestKind = "p
     { location: vscode.ProgressLocation.Notification, title: `Forge ${title.toLowerCase()}`, cancellable: true },
     async (progress, cancel) => {
       progress.report({ message: "Preparing TrueForge…" });
-      const ready = await bootstrapper.ensureReady();
+      // Always re-run bootstrap: it is idempotent and cheap, and it heals a registration or agent that TrueForge lost.
+      const ready = await bootstrapper.run();
       if (!ready.ok) {
         const msg =
           ready.stage === "unreachable"
