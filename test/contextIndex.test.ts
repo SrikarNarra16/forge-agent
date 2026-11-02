@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Bm25Index, FIELD_BOOSTS, K1, B } from "../src/context/bm25";
 import { ContextIndex, MAX_FILE_CHARS } from "../src/context/indexer";
-import { tokenize } from "../src/context/tokenize";
+import { stem, tokenize } from "../src/context/tokenize";
 import { SYMBOL_KINDS } from "../src/context/types";
 import { FakeHost } from "./helpers/fakeHost";
 
@@ -20,9 +20,9 @@ describe("Bm25Index", () => {
     idx.add(1, fields({ body: "routes command lists all routes of the application" }));
     idx.add(2, fields({ body: "config loads values from a file" }));
     idx.add(3, fields({ body: "the application context is pushed" }));
-    const hits = idx.search(["routes", "command"]);
+    const hits = idx.search(["routes", "command"].map(stem));
     expect(hits.map((h) => h.id)).toEqual([1]);
-    expect(hits[0]?.terms).toEqual(["routes", "command"]);
+    expect(hits[0]?.terms).toEqual(["routes", "command"].map(stem));
   });
 
   it("symbol matches outrank body matches, and path/signature outrank body (field boosts)", () => {
@@ -32,7 +32,7 @@ describe("Bm25Index", () => {
     idx.add(2, fields({ symbol: "xyzzy", body: "plain text" }));
     idx.add(3, fields({ path: "src/xyzzy.py", body: "plain text" }));
     idx.add(4, fields({ signature: "def xyzzy(a)", body: "plain text" }));
-    const order = idx.search(["xyzzy"]).map((h) => h.id);
+    const order = idx.search([stem("xyzzy")]).map((h) => h.id);
     expect(order[0]).toBe(2);
     expect(order.slice(1, 3).sort()).toEqual([3, 4]);
     expect(order[3]).toBe(1);
@@ -82,9 +82,9 @@ describe("Bm25Index", () => {
     idx.add(1, fields({ body: "needle" }));
     idx.add(2, fields({ body: "needle" }));
     idx.add(3, fields({ body: "needle" }));
-    expect(idx.search(["needle"], { filter: (id) => id !== 1 }).map((h) => h.id)).toEqual([2, 3]);
-    expect(idx.search(["needle"], { boost: (id) => (id === 3 ? 2 : 1) })[0]?.id).toBe(3);
-    expect(idx.search(["needle"], { limit: 2 })).toHaveLength(2);
+    expect(idx.search([stem("needle")], { filter: (id) => id !== 1 }).map((h) => h.id)).toEqual([2, 3]);
+    expect(idx.search([stem("needle")], { boost: (id) => (id === 3 ? 2 : 1) })[0]?.id).toBe(3);
+    expect(idx.search([stem("needle")], { limit: 2 })).toHaveLength(2);
   });
 
   it("returns nothing for empty queries, unknown terms or an empty index", () => {

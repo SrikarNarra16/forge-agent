@@ -9,6 +9,14 @@ export const B = 0.75;
 export const FIELD_BOOSTS = { symbol: 3, path: 2, signature: 2, body: 1 } as const;
 export const MAX_REASON_TERMS = 3;
 
+export interface Bm25Params {
+  k1: number;
+  b: number;
+  boosts: { symbol: number; path: number; signature: number; body: number };
+}
+
+export const DEFAULT_PARAMS: Bm25Params = { k1: K1, b: B, boosts: { ...FIELD_BOOSTS } };
+
 export interface Bm25Fields {
   symbol: readonly string[];
   path: readonly string[];
@@ -29,9 +37,17 @@ export interface SearchOptions {
   filter?: (id: number) => boolean;
   /** Multiplies a document's score (e.g. a small path-intent boost). */
   boost?: (id: number) => number;
+  /** Per-term multipliers (default 1), e.g. terms from `code spans` count extra. */
+  weights?: ReadonlyMap<string, number>;
 }
 
 export class Bm25Index {
+  private readonly params: Bm25Params;
+
+  constructor(params: Partial<Bm25Params> = {}) {
+    this.params = { ...DEFAULT_PARAMS, ...params, boosts: { ...DEFAULT_PARAMS.boosts, ...params.boosts } };
+  }
+
   private readonly postings = new Map<string, Map<number, number>>();
   private readonly lengths = new Map<number, number>();
   private readonly termsOf = new Map<number, string[]>();
@@ -45,7 +61,7 @@ export class Bm25Index {
     if (this.lengths.has(id)) this.remove(id);
     const weighted = new Map<string, number>();
     let length = 0;
-    for (const [field, boost] of Object.entries(FIELD_BOOSTS) as Array<[keyof Bm25Fields, number]>) {
+    for (const [field, boost] of Object.entries(this.params.boosts) as Array<[keyof Bm25Fields, number]>) {
       for (const term of fields[field]) {
         weighted.set(term, (weighted.get(term) ?? 0) + boost);
         length += boost;
@@ -103,7 +119,8 @@ export class Bm25Index {
       for (const [id, tf] of posting) {
         if (options.filter && !options.filter(id)) continue;
         const length = this.lengths.get(id) ?? avgLength;
-        const part = idf * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * length) / avgLength)));
+        const { k1, b } = this.params;
+        const part = (options.weights?.get(term) ?? 1) * idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + (b * length) / avgLength)));
         scores.set(id, (scores.get(id) ?? 0) + part);
         let per = contributions.get(id);
         if (!per) {

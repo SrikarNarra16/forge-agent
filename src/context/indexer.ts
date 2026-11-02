@@ -1,8 +1,8 @@
 import { HostError, type WorkspaceHost } from "../mcp/host";
 import { estimateTokens } from "../util/tokens";
-import { Bm25Index, type SearchOptions } from "./bm25";
+import { Bm25Index, type Bm25Params, type SearchOptions } from "./bm25";
 import { chunkFile } from "./chunkers";
-import { queryTerms, tokenize, tokenizePath } from "./tokenize";
+import { surfaceForms, tokenize, tokenizePath, weightedQuery, type QueryOptions } from "./tokenize";
 import { SYMBOL_KINDS, type Chunk, type ChunkKind } from "./types";
 import { yieldToEventLoop } from "./yield";
 
@@ -49,9 +49,11 @@ export interface ContextIndexOptions {
   maxFiles?: number;
   maxChunks?: number;
   now?: () => number;
+  /** BM25 parameters (k1, b, field boosts); the defaults are the tuned ones. */
+  bm25?: Partial<Bm25Params>;
 }
 
-export interface IndexSearchOptions extends SearchOptions {
+export interface IndexSearchOptions extends SearchOptions, QueryOptions {
   /** Only these chunk kinds. */
   kinds?: ReadonlySet<ChunkKind>;
   /** Only paths accepted by this predicate. */
@@ -61,7 +63,7 @@ export interface IndexSearchOptions extends SearchOptions {
 export class ContextIndex {
   private readonly chunks = new Map<number, Chunk>();
   private readonly byPath = new Map<string, number[]>();
-  private readonly bm25 = new Bm25Index();
+  private readonly bm25: Bm25Index;
   private nextId = 1;
   private currentState: IndexState = "empty";
   private buildPromise: Promise<IndexStats> | undefined;
@@ -72,6 +74,7 @@ export class ContextIndex {
   private readonly now: () => number;
 
   constructor(options: ContextIndexOptions = {}) {
+    this.bm25 = new Bm25Index(options.bm25);
     this.maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
     this.maxChunks = options.maxChunks ?? DEFAULT_MAX_CHUNKS;
     this.now = options.now ?? (() => performance.now());
@@ -209,7 +212,7 @@ export class ContextIndex {
 
   /** BM25 search for natural language or identifiers. */
   search(query: string, options: IndexSearchOptions = {}): IndexHit[] {
-    const { kinds, pathFilter, filter, ...rest } = options;
+    const { kinds, pathFilter, filter, bigrams, ...rest } = options;
     const accept = (id: number): boolean => {
       const chunk = this.chunks.get(id);
       if (!chunk) return false;
@@ -217,12 +220,21 @@ export class ContextIndex {
       if (pathFilter && !pathFilter(chunk.path)) return false;
       return filter ? filter(id) : true;
     };
+    const surface = surfaceForms(query);
+    const { terms, weights } = weightedQuery(query, { ...(bigrams !== undefined ? { bigrams } : {}) });
     return this.bm25
-      .search(queryTerms(query), { ...rest, filter: accept })
+      .search(terms, { ...rest, weights, filter: accept })
       .flatMap((hit) => {
         const chunk = this.chunks.get(hit.id);
-        return chunk ? [{ chunk, score: hit.score, terms: hit.terms }] : [];
+        // terms are stems internally; report the user's own words
+        return chunk ? [{ chunk, score: hit.score, terms: hit.terms.map((t) => surface.get(t) ?? t) }] : [];
       });
+  }
+
+  /** Fraction of chunks containing the word (0..1), using the same normalisation as indexing. */
+  commonness(word: string): number {
+    const term = tokenize(word)[0];
+    return term === undefined || this.chunks.size === 0 ? 0 : this.bm25.docFrequency(term) / this.chunks.size;
   }
 
   chunk(id: number): Chunk | undefined {

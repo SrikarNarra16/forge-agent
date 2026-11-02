@@ -22,15 +22,15 @@ describe("tokenize", () => {
   });
 
   it("drops stopwords and 1-character tokens but keeps code words like add, get, test", () => {
-    expect(tokenize("how does the app context get pushed")).toEqual(["app", "context", "get", "pushed"]);
-    expect(tokenize("treat 'off' and 'n' as false")).toEqual(["treat", "off", "false"]);
+    expect(tokenize("how does the app context get pushed")).toEqual(["app", "context", "get", "push"]);
+    expect(tokenize("treat 'off' and 'n' as false")).toEqual(["treat", "off", "fals"]);
     expect(tokenize("add a test")).toEqual(["add", "test"]);
   });
 
   it("splits paths", () => {
-    expect(tokenizePath("tests/test_cli.py")).toEqual(["tests", "test_cli", "test", "cli", "py"]);
+    expect(tokenizePath("tests/test_cli.py")).toEqual(["test", "test_cli", "test", "cli", "py"]);
     expect(tokenizePath("src/flask/sansio/app.py")).toEqual(["src", "flask", "sansio", "app", "py"]);
-    expect(tokenizePath("docs/cli.rst")).toEqual(["docs", "cli", "rst"]);
+    expect(tokenizePath("docs/cli.rst")).toEqual(["doc", "cli", "rst"]);
   });
 
   it("handles empty and symbol-only input", () => {
