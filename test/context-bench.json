@@ -1,0 +1,376 @@
+{
+  "description": "Retrieval benchmark over Flask 3.1.3 (fixtures/flask). `tuned` queries were used while choosing weights/chunking; `tuned:false` queries were written first and held out. A query is a hit when a retrieved item matches any `expect` entry (path equal, symbol equal or, if given as a class/function name, a prefix of the chunk's qualified symbol). Modes: any-top3 = a match among the first 3 auto items; all-in-top8 = every expect entry matched within the first 8.",
+  "targets": {
+    "buildMs": 1500,
+    "top3HitsOfTwelveEquivalent": 10,
+    "retrievalMs": 50
+  },
+  "queries": [
+    {
+      "id": "task-b",
+      "tuned": true,
+      "query": "Add a built-in CLI command `flask config` that prints the app config as JSON, masking the value of any key containing SECRET, PASSWORD, TOKEN, or KEY as \"***\". It must appear in `flask --help`, have a test, and be documented with the other built-in commands.",
+      "mode": "all-in-top8",
+      "expect": [
+        {
+          "path": "src/flask/cli.py",
+          "symbol": "FlaskGroup"
+        },
+        {
+          "path": "tests/test_cli.py"
+        },
+        {
+          "path": "docs/cli.rst"
+        }
+      ],
+      "note": "Task B: code, test and docs must all surface without being named. cli.py counts when a chunk of FlaskGroup or routes_command is retrieved."
+    },
+    {
+      "id": "task-a",
+      "tuned": true,
+      "query": "make get_debug_flag treat 'off' and 'n' as false too, case-insensitively, and update the docstring to list every false value",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/helpers.py",
+          "symbol": "get_debug_flag"
+        }
+      ],
+      "note": "Task A as a panel prompt that names the function (in the inline editor the selection supplies the name)."
+    },
+    {
+      "id": "task-a-bare",
+      "tuned": true,
+      "countInRate": false,
+      "query": "treat 'off' and 'n' as false too, case-insensitively, and update the docstring to list every false value",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/helpers.py",
+          "symbol": "get_debug_flag"
+        }
+      ],
+      "note": "KNOWN LIMIT, reported but not counted: the bare instruction names no code, so lexical retrieval cannot know it means get_debug_flag. The inline editor sends the selection with it, so this path never relies on retrieval."
+    },
+    {
+      "id": "routes-command",
+      "tuned": true,
+      "query": "where is the routes command implemented",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/cli.py",
+          "symbol": "routes_command"
+        }
+      ]
+    },
+    {
+      "id": "app-context-push",
+      "tuned": true,
+      "query": "how does the app context get pushed",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/ctx.py",
+          "symbol": "AppContext.push"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-register",
+      "tuned": true,
+      "query": "how are blueprints registered",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/sansio/blueprints.py"
+        },
+        {
+          "path": "src/flask/sansio/app.py",
+          "symbol": "App.register_blueprint"
+        },
+        {
+          "path": "docs/blueprints.rst"
+        }
+      ]
+    },
+    {
+      "id": "jsonify",
+      "tuned": true,
+      "query": "where is jsonify defined",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/json/__init__.py",
+          "symbol": "jsonify"
+        }
+      ]
+    },
+    {
+      "id": "config-from-file",
+      "tuned": true,
+      "query": "how are config values loaded from a file",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/config.py"
+        },
+        {
+          "path": "docs/config.rst"
+        }
+      ]
+    },
+    {
+      "id": "run-server",
+      "tuned": true,
+      "query": "how does the flask run command start the development server",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/cli.py",
+          "symbol": "run_command"
+        },
+        {
+          "path": "docs/cli.rst"
+        }
+      ]
+    },
+    {
+      "id": "template-context",
+      "tuned": true,
+      "query": "how is the template context populated with request and session",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/templating.py",
+          "symbol": "_default_template_ctx_processor"
+        },
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.update_template_context"
+        }
+      ]
+    },
+    {
+      "id": "error-handlers",
+      "tuned": true,
+      "query": "how are exceptions turned into error responses and handled by error handlers",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.handle_user_exception"
+        },
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.handle_exception"
+        },
+        {
+          "path": "src/flask/sansio/app.py",
+          "symbol": "App._find_error_handler"
+        },
+        {
+          "path": "docs/errorhandling.rst"
+        }
+      ]
+    },
+    {
+      "id": "session-save",
+      "tuned": true,
+      "query": "where is the session cookie saved to the response",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/sessions.py",
+          "symbol": "SecureCookieSessionInterface.save_session"
+        }
+      ]
+    },
+    {
+      "id": "url-for",
+      "tuned": true,
+      "query": "how does url_for build urls",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/helpers.py",
+          "symbol": "url_for"
+        },
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.url_for"
+        }
+      ]
+    },
+    {
+      "id": "test-client",
+      "tuned": true,
+      "query": "where is the test client created",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.test_client"
+        },
+        {
+          "path": "src/flask/testing.py",
+          "symbol": "FlaskClient"
+        }
+      ]
+    },
+    {
+      "id": "static-files",
+      "tuned": true,
+      "query": "how are static files served",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.send_static_file"
+        },
+        {
+          "path": "src/flask/helpers.py",
+          "symbol": "send_from_directory"
+        }
+      ]
+    },
+    {
+      "id": "h-teardown",
+      "tuned": false,
+      "query": "what runs after a request finishes: teardown and response processing",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.process_response"
+        },
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.do_teardown_request"
+        },
+        {
+          "path": "src/flask/ctx.py",
+          "symbol": "RequestContext.pop"
+        }
+      ]
+    },
+    {
+      "id": "h-dotenv",
+      "tuned": false,
+      "query": "where does the cli load environment variables from dotenv files",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/cli.py",
+          "symbol": "load_dotenv"
+        },
+        {
+          "path": "src/flask/cli.py",
+          "symbol": "_env_file_callback"
+        },
+        {
+          "path": "docs/cli.rst"
+        }
+      ]
+    },
+    {
+      "id": "h-signals",
+      "tuned": false,
+      "query": "which signals does flask send when a request starts",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/signals.py"
+        },
+        {
+          "path": "docs/signals.rst"
+        }
+      ]
+    },
+    {
+      "id": "h-make-response",
+      "tuned": false,
+      "query": "how is a view's return value converted into a response object",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.make_response"
+        },
+        {
+          "path": "src/flask/helpers.py",
+          "symbol": "make_response"
+        }
+      ]
+    },
+    {
+      "id": "h-version-cmd",
+      "tuned": false,
+      "query": "Add a `flask version` command that prints the Flask and Werkzeug versions. It should show up in `flask --help` and have a test.",
+      "mode": "all-in-top8",
+      "expect": [
+        {
+          "path": "src/flask/cli.py"
+        },
+        {
+          "path": "tests/test_cli.py"
+        }
+      ],
+      "note": "Held out: written after the first tuning round and never used to choose weights, stoplists or the sentence split."
+    },
+    {
+      "id": "h-jsonify-status",
+      "tuned": false,
+      "query": "Make `jsonify` accept an optional status argument. Update the tests and the API docs.",
+      "mode": "all-in-top8",
+      "expect": [
+        {
+          "path": "src/flask/json/__init__.py",
+          "symbol": "jsonify"
+        },
+        {
+          "path": "tests/test_json.py"
+        },
+        {
+          "path": "docs/api.rst"
+        }
+      ],
+      "note": "Held out: written after the first tuning round and never used to choose weights, stoplists or the sentence split."
+    },
+    {
+      "id": "h-jinja-env",
+      "tuned": false,
+      "query": "Where does flask create the jinja environment for templates?",
+      "mode": "any-top3",
+      "expect": [
+        {
+          "path": "src/flask/app.py",
+          "symbol": "Flask.create_jinja_environment"
+        },
+        {
+          "path": "src/flask/sansio/app.py",
+          "symbol": "App.create_jinja_environment"
+        },
+        {
+          "path": "src/flask/templating.py"
+        }
+      ],
+      "note": "Held out: written after the first tuning round and never used to choose weights, stoplists or the sentence split."
+    },
+    {
+      "id": "h-samesite",
+      "tuned": false,
+      "query": "The session cookie should use SameSite=Strict by default. Change the default and document the setting.",
+      "mode": "all-in-top8",
+      "expect": [
+        {
+          "path": "docs/config.rst"
+        },
+        {
+          "path": "src/flask/sessions.py"
+        }
+      ],
+      "note": "Held out: written after the first tuning round and never used to choose weights, stoplists or the sentence split."
+    }
+  ]
+}
