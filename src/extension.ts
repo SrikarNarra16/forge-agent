@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { VscodeHost } from "./host/vscodeHost";
+import { registerInlineEdit } from "./inline/inlineEdit";
 import { generateToken } from "./mcp/auth";
 import { DecisionStore } from "./mcp/decisions";
 import { McpEvents } from "./mcp/events";
@@ -28,7 +29,6 @@ let mcpStarting: Promise<McpServerHandle> | undefined;
 
 /** Commands that are stubs for now; each shows an information message until its prompt implements it. */
 const STUB_COMMANDS: ReadonlyArray<readonly [id: string, message: string]> = [
-  ["forge.inlineEdit", "Forge: inline edit is not implemented yet (P06)."],
   ["forge.switchModel", "Forge: model switching is not implemented yet (P10)."],
 ];
 
@@ -111,6 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
   checkpoints.onChange(() => panel.setCanUndo(checkpoints.canUndo));
+  context.subscriptions.push(registerInlineEdit({ controller, undo: undoLastRun, memento: context.globalState, log }));
 
   panel.setHandlers({
     send: (text) => void controller.send(text),

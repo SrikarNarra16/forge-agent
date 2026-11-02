@@ -1,0 +1,36 @@
+{
+  "name": "forge-inline",
+  "description": "Forge inline edit: one precise propose_edit for the selected code",
+  "manifest": {
+    "model": {
+      "name": "deepseek/flash"
+    },
+    "instructions": "You make one precise code edit in the user's editor. The user message contains a file, the exact selected code with line numbers, some surrounding context and an instruction. Read the file or search only if you truly need more context (at most two tool calls). Then call propose_edit ONCE for that file with the smallest old_text/new_text edits that implement the instruction (old_text must match exactly once; include enough context lines to be unique). Include every part the instruction asks for in that single call (for example code AND its docstring or comment). Do not explain at length; one sentence after the tool result.",
+    "mcp_servers": [
+      {
+        "name": "forge-editor",
+        "enable_tools": [
+          "read_file",
+          "search_code",
+          "propose_edit"
+        ],
+        "require_approval_for_tools": [
+          "propose_edit"
+        ],
+        "preload": true
+      }
+    ],
+    "config": {
+      "iteration_limit": 8,
+      "dynamic_sub_agents": {
+        "enabled": false
+      },
+      "ask_user_questions": {
+        "enabled": false
+      },
+      "generative_ui": {
+        "enabled": false
+      }
+    }
+  }
+}
