@@ -262,3 +262,36 @@ export function applyEdits(text: string, edits: readonly TextEdit[], fileLabel: 
   if (current === text) return { ok: false, error: `These edits leave ${fileLabel} unchanged. Re-read the file and propose a real change.` };
   return { ok: true, text: current };
 }
+
+// --- ranged edits (how accepted hunks are written) -----------------------------------------------------
+
+/** Replace original lines [startLine, endLine) with `text`. Coordinates refer to the ORIGINAL text. */
+export interface RangedEdit {
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
+/** One edit per accepted hunk, all in original coordinates, so they can go into a single WorkspaceEdit. */
+export function hunkEdits(hunks: readonly Hunk[], acceptedIds: readonly number[]): RangedEdit[] {
+  const accepted = new Set(acceptedIds);
+  return hunks
+    .filter((h) => accepted.has(h.id))
+    .map((h) => ({
+      startLine: h.origStart,
+      endLine: h.origStart + h.origLines,
+      text: h.lines
+        .filter((l) => l.type !== "-")
+        .map((l) => l.text)
+        .join(""),
+    }));
+}
+
+/** Applies ranged edits to text (last to first, so earlier coordinates stay valid). Used by tests and fakes. */
+export function applyRangedEdits(original: string, edits: readonly RangedEdit[]): string {
+  const lines = splitLines(original);
+  for (const edit of [...edits].sort((a, b) => b.startLine - a.startLine)) {
+    lines.splice(edit.startLine, edit.endLine - edit.startLine, ...splitLines(edit.text));
+  }
+  return lines.join("");
+}

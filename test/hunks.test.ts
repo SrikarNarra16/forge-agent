@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_REVIEW_LINES, ReviewTooLargeError, applyEdits, composeText, computeHunks, hunkStats, hunkSummary, layoutText, splitLines, totalStats,
+  MAX_REVIEW_LINES, ReviewTooLargeError, applyEdits, applyRangedEdits, composeText, hunkEdits, computeHunks, hunkStats, hunkSummary, layoutText, splitLines, totalStats,
   type Decision, type Hunk,
 } from "../src/review/hunks";
 
@@ -308,5 +308,29 @@ describe("applyEdits", () => {
 
   it("works on a file without a trailing newline", () => {
     expect(applyEdits("x = 1", [{ old_text: "x = 1", new_text: "x = 2" }], "f")).toEqual({ ok: true, text: "x = 2" });
+  });
+});
+
+describe("hunkEdits / applyRangedEdits", () => {
+  it("ranged edits for the accepted hunks reproduce composeText exactly (random documents)", () => {
+    for (let seed = 1; seed <= 300; seed++) {
+      const rand = mulberry32(seed * 7919);
+      const crlf = rand() < 0.4;
+      const lines = randomDoc(rand);
+      const original = render(lines, rand, crlf, rand() < 0.7);
+      const proposed = render(mutate(lines, rand), rand, crlf, rand() < 0.7);
+      const hunks = computeHunks(original, proposed);
+      const accepted = hunks.filter(() => rand() < 0.5).map((h) => h.id);
+      const decisions = hunks.map((h): Decision => (accepted.includes(h.id) ? "accepted" : "rejected"));
+      expect(applyRangedEdits(original, hunkEdits(hunks, accepted)), `seed ${seed}`).toBe(composeText(original, hunks, decisions));
+    }
+  });
+
+  it("produces one edit per accepted hunk in original coordinates", () => {
+    const original = "a\nb\nc\nd\ne\nf\n";
+    const hunks = computeHunks(original, "A\nb\nc\nd\ne\nF\nG\n");
+    expect(hunkEdits(hunks, [1])).toEqual([{ startLine: 5, endLine: 6, text: "F\nG\n" }]);
+    expect(hunkEdits(hunks, [])).toEqual([]);
+    expect(hunkEdits(hunks, [0, 1])).toHaveLength(2);
   });
 });
