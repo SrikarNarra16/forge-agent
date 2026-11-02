@@ -70,6 +70,10 @@
         "title": "Forge: Smoke Test (code question)"
       },
       {
+        "command": "forge.debugApprovalCard",
+        "title": "Forge: Show Test Approval Card"
+      },
+      {
         "command": "forge.reviewAcceptAll",
         "title": "Forge: Accept All Hunks"
       },

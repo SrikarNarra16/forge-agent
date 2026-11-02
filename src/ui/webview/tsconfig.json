@@ -4,5 +4,5 @@
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "types": []
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts", "../protocol.ts"]
 }

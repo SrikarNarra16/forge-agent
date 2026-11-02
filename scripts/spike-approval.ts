@@ -271,7 +271,7 @@ async function main(): Promise<void> {
       },
     });
     const controller = new AgentController({
-      client: recording(createSdkTurnClient(client), capture, log),
+      client: recording(createSdkTurnClient(() => client), capture, log),
       agentName: AGENT,
       ui: wrappedUi,
       approvals: {
