@@ -65,8 +65,20 @@ export interface CompactionInfo {
   lastDurationMs?: number;
 }
 
+/** Input-token accounting TrueForge reports for one model call. */
+export interface ModelUsage {
+  messageId: string;
+  threadId: string;
+  /** All input tokens of the call. */
+  inputTokens: number;
+  /** The part of them that is conversation messages (excludes harness, instructions and tool definitions). */
+  messageTokens?: number;
+}
+
 export interface TurnView {
   messages: MessageInfo[];
+  /** Usage of each model call that reported it, in call order. */
+  usage: ModelUsage[];
   toolCalls: ToolCallInfo[];
   /** Messages and tool calls in the order they first appeared. */
   timeline: TimelineEntry[];
@@ -136,6 +148,7 @@ export class TurnReducer {
   get view(): TurnView {
     return {
       messages: [...this.messages.values()],
+      usage: this.collectUsage(),
       toolCalls: [...this.toolCalls.values()],
       timeline: [...this.timeline],
       threads: [...this.threads.values()],
@@ -145,6 +158,24 @@ export class TurnReducer {
       unsupportedPauses: [...this.unsupported],
       done: this.done,
     };
+  }
+
+  private collectUsage(): ModelUsage[] {
+    const out: ModelUsage[] = [];
+    for (const message of this.modelMessages.values()) {
+      const usage: unknown = (message as { usage?: unknown }).usage;
+      if (typeof usage !== "object" || usage === null) continue;
+      const input = (usage as { inputTokens?: unknown }).inputTokens;
+      if (typeof input !== "number") continue;
+      const breakdown = (usage as { inputTokensBreakdown?: { messages?: unknown } }).inputTokensBreakdown;
+      out.push({
+        messageId: message.id,
+        threadId: message.threadId,
+        inputTokens: input,
+        ...(typeof breakdown?.messages === "number" ? { messageTokens: breakdown.messages } : {}),
+      });
+    }
+    return out;
   }
 
   toolCall(id: string): ToolCallInfo | undefined {
