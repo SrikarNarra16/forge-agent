@@ -3,7 +3,8 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { fitToBudget } from "../../util/tokens";
 import { HostError, type WorkspaceHost } from "../host";
-import { extractSymbols, languageOf, type FoundSymbol } from "../symbols";
+import { indexedRepoMap } from "./indexSearch";
+import { extractSymbols, languageOf } from "../symbols";
 import { READ_ONLY, errorResult, explainHostError, resolveWorkspacePath, runTool, summarize, textResult, throwIfAborted, yieldToEventLoop, type ToolDeps } from "./common";
 
 const MAX_FILES = 3000;
@@ -17,7 +18,7 @@ export interface RepoMapArgs {
 
 interface MappedFile {
   path: string;
-  symbols: FoundSymbol[];
+  symbols: ReadonlyArray<{ kind: string; name: string; line: number }>;
 }
 
 function describeFile(file: MappedFile): string {
@@ -59,8 +60,11 @@ export async function runRepoMap(host: WorkspaceHost, deps: ToolDeps, args: Repo
     const target = resolveWorkspacePath(root, args.path);
     if (!target.ok) return errorResult(target.message);
 
+    const index = deps.index?.ready ? deps.index : undefined;
+    const indexed = index ? indexedRepoMap(index, target.rel) : [];
     let paths: string[];
     let truncatedWalk = false;
+    if (indexed.length > 0) return renderMap(indexed, target.rel, deps, false);
     try {
       if (target.rel !== "" && languageOf(target.rel)) {
         paths = [target.rel]; // a single source file
@@ -94,22 +98,26 @@ export async function runRepoMap(host: WorkspaceHost, deps: ToolDeps, args: Repo
       }
     }
 
-    const scope = target.rel === "" ? "." : target.rel;
-    if (files.length === 0) {
-      return textResult(`No .py/.ts/.tsx/.js/.jsx source files found under ${scope}. Use list_dir to see what is there.`);
-    }
-    const budget = deps.budgets.repoMapTokens;
-    const detailed = files.map(describeFile);
-    const fit = fitToBudget(detailed, budget);
-    const header = `Repo map of ${scope} (${files.length} files)`;
-    const walkNote = truncatedWalk ? `\n[only the first ${MAX_FILES} files were mapped]` : "";
-    if (!fit.truncated) return textResult(`${header}\n${fit.text}${walkNote}`);
-
-    const dirs = summarizeDirectories(files, target.rel, budget);
-    return textResult(
-      `${header}: too large for a per-file outline, showing directory summaries\n${dirs.text}\n[call repo_map with a narrower path (e.g. one of the directories above) to see its files and symbols]${walkNote}`,
-    );
+    return renderMap(files, target.rel, deps, truncatedWalk);
   });
+}
+
+function renderMap(files: readonly MappedFile[], rel: string, deps: ToolDeps, truncatedWalk: boolean): CallToolResult {
+  const scope = rel === "" ? "." : rel;
+  if (files.length === 0) {
+    return textResult(`No .py/.ts/.tsx/.js/.jsx source files found under ${scope}. Use list_dir to see what is there.`);
+  }
+  const budget = deps.budgets.repoMapTokens;
+  const detailed = files.map(describeFile);
+  const fit = fitToBudget(detailed, budget);
+  const header = `Repo map of ${scope} (${files.length} files)`;
+  const walkNote = truncatedWalk ? `\n[only the first ${MAX_FILES} files were mapped]` : "";
+  if (!fit.truncated) return textResult(`${header}\n${fit.text}${walkNote}`);
+
+  const dirs = summarizeDirectories(files, rel, budget);
+  return textResult(
+    `${header}: too large for a per-file outline, showing directory summaries\n${dirs.text}\n[call repo_map with a narrower path (e.g. one of the directories above) to see its files and symbols]${walkNote}`,
+  );
 }
 
 export function registerRepoMap(server: McpServer, host: WorkspaceHost, deps: ToolDeps): void {

@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { ContextIndex } from "../../context/indexer";
 import { isInside } from "../../util/paths";
 import { HostError } from "../host";
 import { DecisionStore } from "../decisions";
@@ -32,10 +33,12 @@ export interface ToolDeps {
   budgets: ToolBudgets;
   /** What the user decided for propose_edit / create_file calls (written by the extension's review handler). */
   decisions: DecisionStore;
+  /** The context index; search_code and repo_map use it once it is ready and scan files otherwise. */
+  index?: ContextIndex | undefined;
 }
 
-export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets>; decisions?: DecisionStore }): ToolDeps {
-  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets }, decisions: deps.decisions ?? new DecisionStore() };
+export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets>; decisions?: DecisionStore; index?: ContextIndex | undefined }): ToolDeps {
+  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets }, decisions: deps.decisions ?? new DecisionStore(), index: deps.index };
 }
 
 /** Annotations for the read-only tools; annotations are informational, gating is by NAME in the agent spec. */
