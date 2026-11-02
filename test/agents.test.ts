@@ -49,3 +49,12 @@ describe("parseAgentFile", () => {
     expect(() => parseAgentFile({ name: "x-agent", description: "d", manifest: {} })).toThrow(/model/);
   });
 });
+
+describe("forge-agent instructions: one propose_edit per file", () => {
+  it("tell the agent to combine edits per file and not to re-propose rejected hunks", async () => {
+    const instructions = parseAgentFile(await loadJson("forge-agent.json")).spec.instructions ?? "";
+    expect(instructions).toContain("Combine ALL changes to one file into a SINGLE propose_edit call");
+    expect(instructions).toContain("Never send two propose_edit calls for the same file in one step");
+    expect(instructions).toContain("If a hunk was rejected by the user, do not re-propose it");
+  });
+});

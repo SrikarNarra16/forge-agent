@@ -100,3 +100,6 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .review-result { font-style: italic; }
 .review-result.applied { color: var(--vscode-charts-green, #89d185); }
 .review-result.rejected, .review-result.failed { color: var(--vscode-errorForeground); }
+
+details.raw-details { margin-top: 6px; }
+details.raw-details > summary { cursor: pointer; color: var(--vscode-descriptionForeground); font-size: 0.9em; }

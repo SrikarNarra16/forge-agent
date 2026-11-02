@@ -1,4 +1,5 @@
 import type { ChatItem, ReviewItemInfo, ReviewQueueEntry } from "../protocol";
+import { reviewHeader, toolCardModel } from "./format";
 import { parseMarkdown, type Block, type Inline } from "./markdown";
 
 /**
@@ -78,7 +79,8 @@ function renderTool(item: Extract<ChatItem, { kind: "tool" }>, handlers: RenderH
   summary.appendChild(el("span", "glyph", STATUS_GLYPH[item.status]));
   summary.appendChild(el("span", "tool-name", item.name));
   if (item.subagent) summary.appendChild(el("span", "badge", item.subagent));
-  summary.appendChild(el("span", "tool-args", item.argsSummary));
+  const model = toolCardModel(item);
+  summary.appendChild(el("span", "tool-args", model.headline));
   const meta = item.review
     ? reviewStateLabel(item.review)
     : item.status === "awaiting_approval"
@@ -92,15 +94,24 @@ function renderTool(item: Extract<ChatItem, { kind: "tool" }>, handlers: RenderH
   details.appendChild(summary);
 
   const body = el("div", "tool-body");
-  if (item.args && item.args !== "{}") {
+  if (model.inlineArgs !== undefined) {
     body.appendChild(el("div", "label", "Arguments"));
-    body.appendChild(el("pre", "args", item.args));
+    body.appendChild(el("pre", "args", model.inlineArgs));
   }
   if (item.resultPreview !== undefined) {
     body.appendChild(el("div", "label", "Result"));
     body.appendChild(el("pre", "result", item.resultPreview));
   }
-  if (item.review) body.appendChild(renderReviewRow(item.id, item.review, handlers));
+  if (item.review) {
+    body.appendChild(renderReviewRow(item.id, item.review, handlers));
+    if (model.detailsArgs !== undefined) {
+      // Raw arguments stay available but collapsed: the card is about the file and the change, not JSON.
+      const details = el("details", "raw-details");
+      details.appendChild(el("summary", undefined, "Details"));
+      details.appendChild(el("pre", "args", model.detailsArgs));
+      body.appendChild(details);
+    }
+  }
   else if (item.approval === "pending") body.appendChild(renderApprovalRow(item.id, handlers));
   else if (item.approval === "allowed") body.appendChild(el("div", "approval-decided allowed", "You allowed this call."));
   else if (item.approval === "denied") body.appendChild(el("div", "approval-decided denied", "You denied this call."));
@@ -156,7 +167,7 @@ function renderReviewRow(callId: string, review: ReviewItemInfo, handlers: Rende
 /** The "Review (N files)" queue shown above the transcript while changes wait for review. */
 export function renderReviewQueue(entries: readonly ReviewQueueEntry[], handlers: RenderHandlers): HTMLElement {
   const box = el("div", "queue-box");
-  box.appendChild(el("div", "queue-title", `Review (${entries.length} file${entries.length === 1 ? "" : "s"})`));
+  box.appendChild(el("div", "queue-title", reviewHeader(entries)));
   for (const entry of entries) {
     const row = el("button", `queue-row state-${entry.state}`);
     row.type = "button";

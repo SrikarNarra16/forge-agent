@@ -26,6 +26,7 @@ export default tseslint.config(
       "src/ui/batcher.ts",
       "src/ui/transcript.ts",
       "src/ui/webview/markdown.ts",
+      "src/ui/webview/format.ts",
       "src/review/hunks.ts",
       "src/review/session.ts",
       "src/review/tracker.ts",
