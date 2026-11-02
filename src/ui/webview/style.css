@@ -80,3 +80,23 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .composer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--vscode-widget-border, #444); flex: none; }
 .composer textarea { flex: 1; resize: vertical; min-height: 2.6em; max-height: 40vh; font: inherit; padding: 4px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #555); border-radius: 2px; }
 .composer textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
+
+.queue { flex: none; padding: 6px 8px 0; }
+.queue-box { border: 1px solid var(--vscode-focusBorder, #3794ff); border-radius: 4px; padding: 4px 6px; background: var(--vscode-sideBar-background); }
+.queue-title { font-weight: 600; margin-bottom: 2px; }
+.queue-row { display: flex; width: 100%; gap: 8px; align-items: baseline; text-align: left; background: transparent; color: var(--vscode-foreground); border: none; padding: 2px 4px; }
+.queue-row:hover:not(:disabled) { background: var(--vscode-list-hoverBackground); }
+.queue-row:disabled { cursor: default; }
+.queue-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); }
+.queue-state { flex: none; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+.queue-row.state-reviewing .queue-state { color: var(--vscode-charts-yellow, #cca700); font-weight: 600; }
+.queue-row.state-applied .queue-state { color: var(--vscode-charts-green, #89d185); }
+.queue-row.state-rejected .queue-state, .queue-row.state-failed .queue-state { color: var(--vscode-errorForeground); }
+
+.review { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.review-file { font-family: var(--vscode-editor-font-family); font-weight: 600; }
+.review-summary { color: var(--vscode-descriptionForeground); }
+.review-hunks, .review-note { font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+.review-result { font-style: italic; }
+.review-result.applied { color: var(--vscode-charts-green, #89d185); }
+.review-result.rejected, .review-result.failed { color: var(--vscode-errorForeground); }

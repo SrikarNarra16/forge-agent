@@ -1,4 +1,4 @@
-import type { ChatItem } from "../protocol";
+import type { ChatItem, ReviewItemInfo, ReviewQueueEntry } from "../protocol";
 import { parseMarkdown, type Block, type Inline } from "./markdown";
 
 /**
@@ -8,6 +8,7 @@ import { parseMarkdown, type Block, type Inline } from "./markdown";
 
 export interface RenderHandlers {
   onApproval(callId: string, decision: "allow" | "deny", reason?: string): void;
+  onOpenReview(callId: string): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -78,7 +79,15 @@ function renderTool(item: Extract<ChatItem, { kind: "tool" }>, handlers: RenderH
   summary.appendChild(el("span", "tool-name", item.name));
   if (item.subagent) summary.appendChild(el("span", "badge", item.subagent));
   summary.appendChild(el("span", "tool-args", item.argsSummary));
-  const meta = item.status === "awaiting_approval" ? "needs approval" : item.durationMs !== undefined ? formatDuration(item.durationMs) : item.status === "running" ? "running" : "";
+  const meta = item.review
+    ? reviewStateLabel(item.review)
+    : item.status === "awaiting_approval"
+      ? "needs approval"
+      : item.durationMs !== undefined
+        ? formatDuration(item.durationMs)
+        : item.status === "running"
+          ? "running"
+          : "";
   if (meta) summary.appendChild(el("span", "tool-meta", meta));
   details.appendChild(summary);
 
@@ -91,11 +100,74 @@ function renderTool(item: Extract<ChatItem, { kind: "tool" }>, handlers: RenderH
     body.appendChild(el("div", "label", "Result"));
     body.appendChild(el("pre", "result", item.resultPreview));
   }
-  if (item.approval === "pending") body.appendChild(renderApprovalRow(item.id, handlers));
+  if (item.review) body.appendChild(renderReviewRow(item.id, item.review, handlers));
+  else if (item.approval === "pending") body.appendChild(renderApprovalRow(item.id, handlers));
   else if (item.approval === "allowed") body.appendChild(el("div", "approval-decided allowed", "You allowed this call."));
   else if (item.approval === "denied") body.appendChild(el("div", "approval-decided denied", "You denied this call."));
   details.appendChild(body);
   return details;
+}
+
+function reviewStateLabel(review: ReviewItemInfo): string {
+  switch (review.state) {
+    case "queued":
+      return "queued";
+    case "reviewing":
+      return review.hunks !== undefined ? `review ${review.hunks} hunk${review.hunks === 1 ? "" : "s"}` : "review";
+    case "applied":
+      return `applied ${review.applied ?? "?"} of ${review.hunks ?? "?"}`;
+    case "rejected":
+      return "rejected";
+    case "failed":
+      return "not applied";
+    case "cancelled":
+      return "cancelled";
+  }
+}
+
+/** The card body of a propose_edit / create_file call: the file, the summary, the hunk count and a Review diff button. */
+function renderReviewRow(callId: string, review: ReviewItemInfo, handlers: RenderHandlers): HTMLElement {
+  const row = el("div", "review");
+  row.appendChild(el("div", "review-file", `${review.kind === "create" ? "New file" : "File"}: ${review.path}`));
+  if (review.summary) row.appendChild(el("div", "review-summary", review.summary));
+  const hunks = review.hunks !== undefined ? `${review.hunks} hunk${review.hunks === 1 ? "" : "s"}` : "";
+  if (review.state === "reviewing" || review.state === "queued") {
+    if (hunks) row.appendChild(el("div", "review-hunks", hunks));
+    const open = el("button", "primary", "Review diff");
+    open.disabled = review.state === "queued";
+    open.title = review.state === "queued" ? "Waiting for an earlier change to the same file" : "Open the diff and accept or reject each hunk";
+    open.addEventListener("click", () => handlers.onOpenReview(callId));
+    row.appendChild(open);
+    if (review.state === "queued") row.appendChild(el("div", "review-note", "Queued behind another change to this file."));
+  } else {
+    const text =
+      review.state === "applied"
+        ? `You applied ${review.applied ?? "?"} of ${review.hunks ?? "?"} hunks.`
+        : review.state === "rejected"
+          ? "You rejected this change."
+          : review.state === "cancelled"
+            ? "Cancelled before anything was written."
+            : `Nothing was written. ${review.detail ?? ""}`.trim();
+    row.appendChild(el("div", `review-result ${review.state}`, text));
+  }
+  return row;
+}
+
+/** The "Review (N files)" queue shown above the transcript while changes wait for review. */
+export function renderReviewQueue(entries: readonly ReviewQueueEntry[], handlers: RenderHandlers): HTMLElement {
+  const box = el("div", "queue-box");
+  box.appendChild(el("div", "queue-title", `Review (${entries.length} file${entries.length === 1 ? "" : "s"})`));
+  for (const entry of entries) {
+    const row = el("button", `queue-row state-${entry.state}`);
+    row.type = "button";
+    row.appendChild(el("span", "queue-path", entry.path));
+    row.appendChild(el("span", "queue-state", reviewStateLabel(entry)));
+    row.title = entry.summary;
+    row.disabled = entry.state !== "reviewing";
+    row.addEventListener("click", () => handlers.onOpenReview(entry.callId));
+    box.appendChild(row);
+  }
+  return box;
 }
 
 function renderApprovalRow(callId: string, handlers: RenderHandlers): HTMLElement {

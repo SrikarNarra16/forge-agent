@@ -179,3 +179,37 @@ describe("parseWebMessage (webview input is untrusted)", () => {
     expect(parseWebMessage({ type: "stop", extra: "x" })).toEqual({ type: "stop" });
   });
 });
+
+describe("review info on tool cards", () => {
+  it("attaches review info to a tool card, whether it arrives before or after the card", () => {
+    const t = new Transcript();
+    const r = new TurnReducer();
+    const info = { path: "src/a.py", summary: "bump", kind: "edit" as const, state: "reviewing" as const, hunks: 3 };
+    t.setReview("c1", info); // before the card exists
+    step(t, r, modelMessage({ id: "m1", calls: [{ id: "c1", name: "propose_edit", args: '{"path":"src/a.py"}' }] }));
+    expect(t.items.find((i) => i.id === "c1")).toMatchObject({ kind: "tool", review: info });
+    const updated = t.setReview("c1", { ...info, state: "applied", applied: 2 });
+    expect(updated).toMatchObject({ review: { state: "applied", applied: 2 } });
+    expect(t.setReview("c1", undefined)).not.toHaveProperty("review");
+    expect(t.setReview("nope", info)).toBeUndefined();
+  });
+
+  it("keeps the review info when the card is re-rendered by later events", () => {
+    const t = new Transcript();
+    const r = new TurnReducer();
+    step(t, r, modelMessage({ id: "m1", calls: [{ id: "c1", name: "propose_edit" }] }));
+    t.setReview("c1", { path: "a.py", summary: "s", kind: "edit", state: "reviewing" });
+    const items = step(t, r, toolResponse({ toolCallId: "c1", content: "applied 1 of 1 hunks" }));
+    expect(items[0]).toMatchObject({ review: { state: "reviewing" }, status: "done" });
+  });
+});
+
+describe("parseWebMessage: review messages", () => {
+  it("accepts undoRun and openReview, rejects a malformed openReview", () => {
+    expect(parseWebMessage({ type: "undoRun" })).toEqual({ type: "undoRun" });
+    expect(parseWebMessage({ type: "openReview", callId: "c1" })).toEqual({ type: "openReview", callId: "c1" });
+    for (const bad of [{ type: "openReview" }, { type: "openReview", callId: "" }, { type: "openReview", callId: 5 }, { type: "openReview", callId: "x".repeat(400) }]) {
+      expect(parseWebMessage(bad)).toBeUndefined();
+    }
+  });
+});

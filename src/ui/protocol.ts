@@ -13,6 +13,24 @@ export type ToolStatus = "running" | "awaiting_approval" | "done" | "denied";
 
 export type ApprovalState = "pending" | "allowed" | "denied";
 
+/** Mirrors ReviewState in src/review/tracker.ts (checked in transcript.ts). */
+export type ReviewState = "queued" | "reviewing" | "applied" | "rejected" | "failed" | "cancelled";
+
+/** A propose_edit / create_file call going through the diff review. */
+export interface ReviewItemInfo {
+  path: string;
+  summary: string;
+  kind: "edit" | "create";
+  state: ReviewState;
+  hunks?: number;
+  applied?: number;
+  detail?: string;
+}
+
+export interface ReviewQueueEntry extends ReviewItemInfo {
+  callId: string;
+}
+
 export type ChatItem =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; streaming: boolean; subagent?: string }
@@ -29,6 +47,8 @@ export type ChatItem =
       durationMs?: number;
       subagent?: string;
       approval?: ApprovalState;
+      /** Present for propose_edit / create_file: the card shows "Review diff" instead of Allow/Deny. */
+      review?: ReviewItemInfo;
     }
   | { kind: "notice"; id: string; level: "info" | "warning" | "error"; text: string };
 
@@ -38,12 +58,15 @@ export interface StatusInfo {
   detail?: string;
   /** Context compaction is in progress. */
   compacting?: boolean;
+  /** A run changed files and can be rolled back ("Undo run"). */
+  canUndo?: boolean;
 }
 
 export type ExtToWeb =
   | { type: "init"; items: ChatItem[]; status: StatusInfo }
   | { type: "upsert"; items: ChatItem[] }
   | { type: "status"; status: StatusInfo }
+  | { type: "review"; entries: ReviewQueueEntry[] }
   | { type: "reset" };
 
 export type WebToExt =
@@ -51,6 +74,8 @@ export type WebToExt =
   | { type: "send"; text: string }
   | { type: "stop" }
   | { type: "newChat" }
+  | { type: "undoRun" }
+  | { type: "openReview"; callId: string }
   | { type: "approval"; callId: string; decision: "allow" | "deny"; reason?: string };
 
 const MAX_TEXT = 50_000;
@@ -68,7 +93,13 @@ export function parseWebMessage(data: unknown): WebToExt | undefined {
     case "ready":
     case "stop":
     case "newChat":
+    case "undoRun":
       return { type: data["type"] };
+    case "openReview": {
+      const callId = data["callId"];
+      if (typeof callId !== "string" || callId === "" || callId.length > MAX_ID) return undefined;
+      return { type: "openReview", callId };
+    }
     case "send": {
       const text = data["text"];
       if (typeof text !== "string" || text.trim() === "" || text.length > MAX_TEXT) return undefined;

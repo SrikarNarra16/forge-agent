@@ -75,11 +75,13 @@
       },
       {
         "command": "forge.reviewAcceptAll",
-        "title": "Forge: Accept All Hunks"
+        "title": "Forge: Accept All Hunks",
+        "icon": "$(check-all)"
       },
       {
         "command": "forge.reviewRejectAll",
-        "title": "Forge: Reject All Hunks"
+        "title": "Forge: Reject All Hunks",
+        "icon": "$(close-all)"
       },
       {
         "command": "forge.reviewAcceptHunk",
@@ -88,6 +90,19 @@
       {
         "command": "forge.reviewRejectHunk",
         "title": "Forge: Reject Hunk"
+      },
+      {
+        "command": "forge.reviewApply",
+        "title": "Forge: Apply Accepted Hunks",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "forge.reviewPickHunk",
+        "title": "Forge: Review Hunks\u2026"
+      },
+      {
+        "command": "forge.fakeProposal",
+        "title": "Forge: Fake Proposal"
       }
     ],
     "keybindings": [
@@ -96,6 +111,17 @@
         "key": "ctrl+alt+k",
         "mac": "cmd+alt+k",
         "when": "editorHasSelection"
+      },
+      {
+        "command": "forge.reviewApply",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "resourceScheme == 'forge-proposal' && editorTextFocus"
+      },
+      {
+        "command": "forge.reviewRejectAll",
+        "key": "escape",
+        "when": "resourceScheme == 'forge-proposal' && editorTextFocus && !suggestWidgetVisible && !findWidgetVisible && !inSnippetMode && !parameterHintsVisible"
       }
     ],
     "menus": {
@@ -122,6 +148,31 @@
         {
           "command": "forge.reviewRejectHunk",
           "when": "false"
+        },
+        {
+          "command": "forge.reviewApply",
+          "when": "resourceScheme == 'forge-proposal'"
+        },
+        {
+          "command": "forge.reviewPickHunk",
+          "when": "resourceScheme == 'forge-proposal'"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "forge.reviewAcceptAll",
+          "when": "resourceScheme == 'forge-proposal'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "forge.reviewRejectAll",
+          "when": "resourceScheme == 'forge-proposal'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "forge.reviewApply",
+          "when": "resourceScheme == 'forge-proposal'",
+          "group": "navigation@3"
         }
       ]
     },
@@ -155,6 +206,9 @@
           "description": "Roll back edits applied during a run when the run is cancelled."
         }
       }
+    },
+    "configurationDefaults": {
+      "diffEditor.codeLens": true
     }
   },
   "scripts": {

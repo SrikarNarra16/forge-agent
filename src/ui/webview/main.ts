@@ -1,6 +1,6 @@
 /** Webview entry: the Agent panel (status line, transcript, composer). Talks to the extension through src/ui/protocol.ts. */
 import type { ChatItem, ExtToWeb, RunState, StatusInfo, WebToExt } from "../protocol";
-import { renderItem, type RenderHandlers } from "./render";
+import { renderItem, renderReviewQueue, type RenderHandlers } from "./render";
 import "./style.css";
 
 const vscode = acquireVsCodeApi();
@@ -30,6 +30,12 @@ function mount(): void {
   const newChat = document.createElement("button");
   newChat.className = "secondary";
   newChat.textContent = "New chat";
+  const undo = document.createElement("button");
+  undo.id = "undo";
+  undo.className = "secondary";
+  undo.textContent = "Undo run";
+  undo.title = "Restore every file the agent changed in its last run";
+  undo.disabled = true;
   const stop = document.createElement("button");
   stop.id = "stop";
   stop.className = "danger";
@@ -37,7 +43,11 @@ function mount(): void {
   stop.disabled = true;
   const bar = document.createElement("header");
   bar.className = "bar";
-  bar.append(dot, statusText, modelText, spacer, newChat, stop);
+  bar.append(dot, statusText, modelText, spacer, undo, newChat, stop);
+
+  const queue = document.createElement("div");
+  queue.className = "queue";
+  queue.hidden = true;
 
   const transcript = document.createElement("main");
   transcript.className = "transcript";
@@ -55,13 +65,15 @@ function mount(): void {
   composer.className = "composer";
   composer.append(input, send);
 
-  root.append(bar, transcript, composer);
+  root.append(bar, queue, transcript, composer);
 
   const elements = new Map<string, HTMLElement>();
   let busy = false;
+  let canUndo = false;
 
   const handlers: RenderHandlers = {
     onApproval: (callId, decision, reason) => post({ type: "approval", callId, decision, ...(reason ? { reason } : {}) }),
+    onOpenReview: (callId) => post({ type: "openReview", callId }),
   };
 
   const nearBottom = (): boolean => transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
@@ -75,6 +87,7 @@ function mount(): void {
   const refreshControls = (): void => {
     send.disabled = busy;
     stop.disabled = !busy;
+    undo.disabled = busy || !canUndo;
   };
 
   const upsert = (items: readonly ChatItem[]): void => {
@@ -92,6 +105,7 @@ function mount(): void {
 
   const setStatus = (status: StatusInfo): void => {
     busy = status.state === "running" || status.state === "awaitingApproval";
+    canUndo = status.canUndo === true;
     dot.className = `dot state-${status.state}`;
     const label = status.compacting ? "Compacting context…" : STATE_LABEL[status.state];
     statusText.textContent = status.detail && (status.state === "error" || status.state === "cancelled") ? `${label}: ${status.detail}` : label;
@@ -120,6 +134,12 @@ function mount(): void {
       case "status":
         setStatus(message.status);
         break;
+      case "review": {
+        queue.replaceChildren();
+        queue.hidden = message.entries.length === 0;
+        if (message.entries.length > 0) queue.appendChild(renderReviewQueue(message.entries, handlers));
+        break;
+      }
       case "reset":
         reset();
         break;
@@ -144,6 +164,7 @@ function mount(): void {
   });
   stop.addEventListener("click", () => post({ type: "stop" }));
   newChat.addEventListener("click", () => post({ type: "newChat" }));
+  undo.addEventListener("click", () => post({ type: "undoRun" }));
 
   refreshEmpty();
   refreshControls();

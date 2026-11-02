@@ -1,5 +1,6 @@
 import type { ReducerChange, ThreadInfo, ToolCallInfo, TurnView } from "../trueforge/events";
-import type { ApprovalState, ChatItem, ToolStatus } from "./protocol";
+import type { ReviewState as TrackerReviewState } from "../review/tracker";
+import type { ApprovalState, ChatItem, ReviewItemInfo, ReviewState, ToolStatus } from "./protocol";
 
 /**
  * Transcript: the conversation as UI items (user messages, assistant text, tool cards, notices), built
@@ -10,6 +11,7 @@ import type { ApprovalState, ChatItem, ToolStatus } from "./protocol";
 // Compile-time guard: the UI's tool status union must match the reducer's.
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 export const _toolStatusMatches: Same<ToolStatus, ToolCallInfo["status"]> = true;
+export const _reviewStateMatches: Same<ReviewState, TrackerReviewState> = true;
 
 const MAX_SUMMARY_VALUE = 48;
 const MAX_SUMMARY = 110;
@@ -48,6 +50,8 @@ export class Transcript {
   private readonly positions = new Map<string, number>();
   /** Tool calls that went through an approval prompt, so a later non-pending status reads as "allowed". */
   private readonly gated = new Set<string>();
+  /** Review info by tool call id, attached to the tool card (it may arrive before or after the card exists). */
+  private readonly reviews = new Map<string, ReviewItemInfo>();
   private noticeCounter = 0;
   private userCounter = 0;
 
@@ -59,6 +63,17 @@ export class Transcript {
     this.list = [];
     this.positions.clear();
     this.gated.clear();
+    this.reviews.clear();
+  }
+
+  /** Attaches (or removes) the review info of a tool call; returns the updated card if it exists. */
+  setReview(id: string, review: ReviewItemInfo | undefined): ChatItem | undefined {
+    if (review) this.reviews.set(id, review);
+    else this.reviews.delete(id);
+    const item = this.find(id);
+    if (!item || item.kind !== "tool") return undefined;
+    const { review: _old, ...rest } = item;
+    return this.upsert(review ? { ...rest, review } : rest);
   }
 
   addUser(text: string): ChatItem {
@@ -123,6 +138,7 @@ export class Transcript {
 
   private toolItem(call: ToolCallInfo, subagent: string | undefined): ChatItem {
     if (call.status === "awaiting_approval") this.gated.add(call.id);
+    const review = this.reviews.get(call.id);
     const approval: ApprovalState | undefined =
       call.status === "awaiting_approval" ? "pending" : call.status === "denied" ? "denied" : this.gated.has(call.id) ? "allowed" : undefined;
     return {
@@ -136,6 +152,7 @@ export class Transcript {
       ...(call.durationMs !== undefined ? { durationMs: call.durationMs } : {}),
       ...(subagent ? { subagent } : {}),
       ...(approval ? { approval } : {}),
+      ...(review ? { review } : {}),
     };
   }
 }

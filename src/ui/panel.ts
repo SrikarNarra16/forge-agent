@@ -5,7 +5,8 @@ import type { ReducerChange, TurnView } from "../trueforge/events";
 import type { RunState } from "../trueforge/runState";
 import type { Logger } from "../util/log";
 import { Batcher } from "./batcher";
-import { parseWebMessage, type ChatItem, type ExtToWeb, type StatusInfo } from "./protocol";
+import type { ReviewEntry, ReviewTracker } from "../review/tracker";
+import { parseWebMessage, type ChatItem, type ExtToWeb, type ReviewQueueEntry, type StatusInfo } from "./protocol";
 import { Transcript, prettyArgs, summarizeArgs } from "./transcript";
 
 /**
@@ -22,6 +23,23 @@ export interface PanelHandlers {
   send(text: string): void;
   stop(): void;
   newChat(): void;
+  /** Open the diff of a pending review. */
+  openReview(callId: string): void;
+  /** Roll back the files changed by the last agent run. */
+  undoRun(): void;
+}
+
+function toQueueEntry(entry: ReviewEntry): ReviewQueueEntry {
+  return {
+    callId: entry.callId,
+    path: entry.path,
+    summary: entry.summary,
+    kind: entry.kind,
+    state: entry.state,
+    ...(entry.hunks !== undefined ? { hunks: entry.hunks } : {}),
+    ...(entry.applied !== undefined ? { applied: entry.applied } : {}),
+    ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
+  };
 }
 
 interface PendingApproval {
@@ -38,7 +56,28 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   private readonly testCards = new Set<string>();
   private testCardCounter = 0;
 
-  constructor(private readonly log: Logger) {}
+  private readonly unsubscribeTracker: () => void;
+
+  constructor(
+    private readonly log: Logger,
+    private readonly tracker: ReviewTracker,
+  ) {
+    // The review queue and the review info on the tool cards follow the tracker.
+    this.unsubscribeTracker = tracker.onChange((entries) => {
+      for (const entry of entries) {
+        const { callId, ...info } = toQueueEntry(entry);
+        const item = this.transcript.setReview(callId, info);
+        if (item) this.batcher.push(item);
+      }
+      this.post({ type: "review", entries: entries.map(toQueueEntry) });
+    });
+  }
+
+  /** Enables or disables the "Undo run" button. */
+  setCanUndo(canUndo: boolean): void {
+    this.status = { ...this.status, canUndo };
+    this.post({ type: "status", status: this.status });
+  }
 
   setHandlers(handlers: PanelHandlers): void {
     this.handlers = handlers;
@@ -55,6 +94,7 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   }
 
   dispose(): void {
+    this.unsubscribeTracker();
     this.batcher.dispose();
     this.pending.clear();
   }
@@ -153,6 +193,7 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
     switch (message.type) {
       case "ready":
         this.post({ type: "init", items: [...this.transcript.items], status: this.status });
+        this.post({ type: "review", entries: this.tracker.list().map(toQueueEntry) });
         break;
       case "send":
         this.handlers?.send(message.text);
@@ -162,6 +203,12 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
         break;
       case "newChat":
         this.handlers?.newChat();
+        break;
+      case "undoRun":
+        this.handlers?.undoRun();
+        break;
+      case "openReview":
+        this.handlers?.openReview(message.callId);
         break;
       case "approval":
         this.resolveApproval(message.callId, message.decision, message.reason);
