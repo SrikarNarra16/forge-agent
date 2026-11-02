@@ -40,6 +40,7 @@ export default tseslint.config(
       "src/review/fakeProposalPlan.ts",
       "src/trueforge/routingApprovals.ts",
       "src/mcp/**/*.ts",
+      "src/context/**/*.ts",
       "scripts/**/*.ts",
     ],
     rules: {

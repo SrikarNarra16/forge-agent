@@ -26,7 +26,7 @@ describe("modules shared with scripts and tests stay free of the vscode API", ()
     const PURE_UI = ["protocol", "batcher", "transcript", "webview/markdown", "webview/format"];
     const PURE_INLINE = ["message", "runner"];
     const PURE_REVIEW = ["hunks", "session", "tracker", "checkpoints", "applyCore", "hash", "reviewHandler", "runScope", "fakeProposalPlan"];
-    const files = [...PURE_TRUEFORGE.map((n) => join(root, `src/trueforge/${n}.ts`)), ...PURE_UI.map((n) => join(root, `src/ui/${n}.ts`)), ...PURE_REVIEW.map((n) => join(root, `src/review/${n}.ts`)), ...PURE_INLINE.map((n) => join(root, `src/inline/${n}.ts`)), ...(await tsFilesUnder(join(root, "src/mcp"))), ...(await tsFilesUnder(join(root, "scripts")).catch(() => []))];
+    const files = [...PURE_TRUEFORGE.map((n) => join(root, `src/trueforge/${n}.ts`)), ...PURE_UI.map((n) => join(root, `src/ui/${n}.ts`)), ...PURE_REVIEW.map((n) => join(root, `src/review/${n}.ts`)), ...PURE_INLINE.map((n) => join(root, `src/inline/${n}.ts`)), ...(await tsFilesUnder(join(root, "src/mcp"))), ...(await tsFilesUnder(join(root, "src/context"))), ...(await tsFilesUnder(join(root, "scripts")).catch(() => []))];
     expect(files.length).toBeGreaterThan(3);
     for (const file of files) {
       const text = stripComments(await readFile(file, "utf8"));
