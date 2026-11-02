@@ -1,0 +1,101 @@
+{"turn":1,"sessionId":"<session>","input":[{"type":"user.message","content":"Call echo_write exactly once with text 'beta', then tell me what happened."}]}
+{"turn":1,"event":{"type":"turn.created","id":"01m6d7gppcfsrkcxhh96dhwds2","turnId":"01m6d7gppa3s8n3qps8tf9bxqy","previousTurnId":null,"input":[{"type":"user.message","content":"Call echo_write exactly once with text 'beta', then tell me what happened."}],"state":{"status":"running"},"createdAt":"2026-11-02T04:15:41.259Z","threadId":null}}
+{"turn":1,"event":{"type":"mcp.initialize","id":"01m6d7gppk915720csgjp7b6p1","createdAt":"2026-11-02T04:15:41.267Z","threadId":"main","mcpServers":[{"name":"forge-spike-mcp","id":"forge-spike-mcp","transportType":"streamable-http"}]}}
+{"turn":1,"event":{"type":"model.message","threadId":"main","createdAt":"2026-11-02T04:15:41.268Z","id":"01m6d7gppmwgjg3w5q2d2mr9p2","model":{"name":"deepseek/flash","params":{"maxTokens":8000}}}}
+{"turn":1,"event":{"content":"I","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main","createdAt":"2026-11-02T04:15:41.869Z"}}
+{"turn":1,"event":{"content":"'ll","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":" call","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":" echo","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":"_write","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":" with","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":" the","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":" text","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":" '","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":"beta","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"content":"'.","type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"toolInfo":{"type":"mcp","name":"echo_write","serverId":"forge-spike-mcp","serverName":"forge-spike-mcp"},"index":0,"id":"call_00_ET_gf24O6puo5ow6QazQaVy5240","type":"function","function":{"name":"echo_write","arguments":""}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"index":0,"function":{"arguments":"{\""}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"index":0,"function":{"arguments":"text"}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"index":0,"function":{"arguments":"\""}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"index":0,"function":{"arguments":": \""}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"index":0,"function":{"arguments":"beta"}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"index":0,"function":{"arguments":"\""}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"toolCalls":[{"index":0,"function":{"arguments":"}"}}],"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main"}}
+{"turn":1,"event":{"type":"model.message.delta","id":"01m6d7gppmwgjg3w5q2d2mr9p2","threadId":"main","finishReason":"tool_calls","usage":{"inputTokens":1193,"outputTokens":48,"cacheReadTokens":1024,"inputTokensBreakdown":{"harness":768,"skills":0,"instructions":45,"toolDefinitions":122,"messages":258}}}}
+{"turn":1,"event":{"type":"tool.approval_required","id":"01m6d7gqdn48rgew1d8wk5bcat","createdAt":"2026-11-02T04:15:42.006Z","threadId":"main","toolCalls":[{"id":"call_00_ET_gf24O6puo5ow6QazQaVy5240","sourceEventId":"01m6d7gppmwgjg3w5q2d2mr9p2"}]}}
+{"turn":1,"event":{"type":"turn.done","id":"01m6d7gqdpqt3284hmyzcpyc7k","createdAt":"2026-11-02T04:15:42.006Z","state":{"status":"done","output":null,"requiredActions":[{"type":"tool.approval_required","id":"01m6d7gqdn48rgew1d8wk5bcat","createdAt":"2026-11-02T04:15:42.006Z","threadId":"main","toolCalls":[{"id":"call_00_ET_gf24O6puo5ow6QazQaVy5240","sourceEventId":"01m6d7gppmwgjg3w5q2d2mr9p2"}]}],"completedAt":"2026-11-02T04:15:42.006Z","metrics":{"totalInputTokens":1193,"totalOutputTokens":48,"totalTokens":1241,"totalCacheReadTokens":1024,"totalReasoningTokens":0}},"threadId":null}}
+{"turn":2,"sessionId":"<session>","input":[{"type":"user.tool_approval","threadId":"main","toolCallId":"call_00_ET_gf24O6puo5ow6QazQaVy5240","approval":{"status":"deny","reason":"User rejected: writes are not allowed in this test"}}]}
+{"turn":2,"event":{"type":"turn.created","id":"01m6d7gqdztk0kektmp6jm395m","turnId":"01m6d7gqdv4s2nmhv3d9xk58dg","previousTurnId":"01m6d7gppa3s8n3qps8tf9bxqy","input":[{"type":"user.tool_approval","threadId":"main","toolCallId":"call_00_ET_gf24O6puo5ow6QazQaVy5240","approval":{"status":"deny","reason":"User rejected: writes are not allowed in this test"}}],"state":{"status":"running"},"createdAt":"2026-11-02T04:15:42.013Z","threadId":null}}
+{"turn":2,"event":{"type":"mcp.initialize","id":"01m6d7gqe6m68260wm2knvqhn3","createdAt":"2026-11-02T04:15:42.022Z","threadId":"main","mcpServers":[{"name":"forge-spike-mcp","id":"forge-spike-mcp","transportType":"streamable-http"}]}}
+{"turn":2,"event":{"toolCallId":"call_00_ET_gf24O6puo5ow6QazQaVy5240","content":"{\"error\":[{\"type\":\"text\",\"text\":\"{\\\"error\\\":\\\"User denied tool call: User rejected: writes are not allowed in this test\\\"}\"}]}","type":"tool.response","id":"01m6d7gqe7h39zs7cnhskjzmkf","createdAt":"2026-11-02T04:15:42.023Z","threadId":"main"}}
+{"turn":2,"event":{"type":"model.message","threadId":"main","createdAt":"2026-11-02T04:15:42.023Z","id":"01m6d7gqe7h39zs7cnhskjzmkg","model":{"name":"deepseek/flash","params":{"maxTokens":8000}}}}
+{"turn":2,"event":{"reasoningContent":"The","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main","createdAt":"2026-11-02T04:15:42.653Z"}}
+{"turn":2,"event":{"reasoningContent":" tool","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" call","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" was","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" denied","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":".","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" Report","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" it","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":".\n\n","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":"Should","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" I","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" try","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" again","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":"?","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" No","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" —","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" user","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" asked","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" exactly","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" once","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":",","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" and","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" it","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" was","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" denied","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" by","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" user","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":".","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":" Report","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"reasoningContent":".","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":"The","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" echo","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":"_write","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" call","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" did","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" not","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" run","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" —","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" it","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" returned","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" an","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" error","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" saying","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" \"","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":"User","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" denied","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" tool","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" call","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":":","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" User","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" rejected","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":":","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" writes","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" are","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" not","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" allowed","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" in","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" this","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" test","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":",\"","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" so","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" '","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":"beta","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":"'","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" was","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" never","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":" appended","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"content":".","type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main"}}
+{"turn":2,"event":{"type":"model.message.delta","id":"01m6d7gqe7h39zs7cnhskjzmkg","threadId":"main","finishReason":"stop","usage":{"inputTokens":1286,"outputTokens":69,"cacheReadTokens":1152,"inputTokensBreakdown":{"harness":768,"skills":0,"instructions":45,"toolDefinitions":122,"messages":351}}}}
+{"turn":2,"event":{"type":"turn.done","id":"01m6d7grhkmpggs8gsyfq52590","createdAt":"2026-11-02T04:15:43.154Z","state":{"status":"done","output":{"reasoningContent":"The tool call was denied. Report it.\n\nShould I try again? No — user asked exactly once, and it was denied by user. Report.","content":"The echo_write call did not run — it returned an error saying \"User denied tool call: User rejected: writes are not allowed in this test,\" so 'beta' was never appended.","type":"model.message","id":"01m6d7gqe7h39zs7cnhskjzmkg","createdAt":"2026-11-02T04:15:43.153Z","threadId":"main","finishReason":"stop","usage":{"inputTokens":1286,"outputTokens":69,"cacheReadTokens":1152,"inputTokensBreakdown":{"harness":768,"skills":0,"instructions":45,"toolDefinitions":122,"messages":351}},"model":{"name":"deepseek/flash","params":{"maxTokens":8000}}},"requiredActions":[],"completedAt":"2026-11-02T04:15:43.154Z","metrics":{"totalInputTokens":1286,"totalOutputTokens":69,"totalTokens":1355,"totalCacheReadTokens":1152,"totalReasoningTokens":30}},"threadId":null}}

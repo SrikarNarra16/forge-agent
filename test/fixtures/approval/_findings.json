@@ -1,0 +1,203 @@
+{
+  "g_plain": {
+    "final": "Hello there, my dear friend! No tool ran, because you only asked for a five-word greeting and no tool call was needed.",
+    "states": [
+      "running",
+      "done"
+    ]
+  },
+  "h_ungated": {
+    "final": "I called `echo_read` once and it returned an empty list (`[]`).",
+    "states": [
+      "running",
+      "done"
+    ]
+  },
+  "a_allow": {
+    "final": "`echo_write` ran once (it was approved) and returned \"appended 'alpha'; list is now ['alpha']\"; `echo_read` then returned the list as `[\"alpha\"]`.",
+    "states": [
+      "running",
+      "awaitingApproval",
+      "running",
+      "done"
+    ],
+    "decisions": [
+      "echo_write({\"text\": \"alpha\"}) -> allow"
+    ],
+    "written": [
+      "alpha"
+    ]
+  },
+  "b_deny": {
+    "final": "The echo_write call did not run — it returned an error saying \"User denied tool call: User rejected: writes are not allowed in this test,\" so 'beta' was never appended.",
+    "states": [
+      "running",
+      "awaitingApproval",
+      "running",
+      "done"
+    ],
+    "decisions": [
+      "echo_write({\"text\": \"beta\"}) -> deny"
+    ],
+    "writtenAfterDeny": []
+  },
+  "c_parallel": {
+    "final": "Both parallel `echo_write` calls ran without any approval prompt: the first returned `appended \"one\"; list is now [\"one\"]` and the second returned `appended \"two\"; list is now [\"one\",\"two\"]`.",
+    "states": [
+      "running",
+      "awaitingApproval",
+      "running",
+      "done"
+    ],
+    "decisions": [
+      "echo_write({\"text\": \"two\"}) -> allow",
+      "echo_write({\"text\": \"one\"}) -> allow"
+    ],
+    "written": [
+      "one",
+      "two"
+    ],
+    "handlerStartGapMs": 0
+  },
+  "d_stream_events": [
+    "turn.created",
+    "mcp.initialize",
+    "model.message",
+    "tool.approval_required",
+    "turn.done"
+  ],
+  "d_turn_done_state": {
+    "status": "done",
+    "output": null,
+    "requiredActions": [
+      {
+        "type": "tool.approval_required",
+        "id": "01m6d7gvy34vaq8f1r2jmmqwqw",
+        "createdAt": "2026-11-02T04:15:46.627Z",
+        "threadId": "main",
+        "toolCalls": [
+          {
+            "id": "call_00_ET_AnyemnTe2ygJLA6KsWHz9233",
+            "sourceEventId": "01m6d7gv6kng7rqydxced16nr4"
+          }
+        ]
+      }
+    ],
+    "completedAt": "2026-11-02T04:15:46.627Z",
+    "metrics": {
+      "totalInputTokens": 1193,
+      "totalOutputTokens": 47,
+      "totalTokens": 1240,
+      "totalCacheReadTokens": 1024,
+      "totalReasoningTokens": 0
+    }
+  },
+  "d_getTurn_0s": {
+    "status": "done",
+    "output": null,
+    "requiredActions": [
+      {
+        "type": "tool.approval_required",
+        "id": "01m6d7gvy34vaq8f1r2jmmqwqw",
+        "createdAt": "2026-11-02T04:15:46.627Z",
+        "threadId": "main",
+        "toolCalls": [
+          {
+            "id": "call_00_ET_AnyemnTe2ygJLA6KsWHz9233",
+            "sourceEventId": "01m6d7gv6kng7rqydxced16nr4"
+          }
+        ]
+      }
+    ],
+    "completedAt": "2026-11-02T04:15:46.627Z",
+    "metrics": {
+      "totalInputTokens": 1193,
+      "totalOutputTokens": 47,
+      "totalTokens": 1240,
+      "totalCacheReadTokens": 1024,
+      "totalReasoningTokens": 0
+    }
+  },
+  "d_getTurn_65s": {
+    "status": "done",
+    "output": null,
+    "requiredActions": [
+      {
+        "type": "tool.approval_required",
+        "id": "01m6d7gvy34vaq8f1r2jmmqwqw",
+        "createdAt": "2026-11-02T04:15:46.627Z",
+        "threadId": "main",
+        "toolCalls": [
+          {
+            "id": "call_00_ET_AnyemnTe2ygJLA6KsWHz9233",
+            "sourceEventId": "01m6d7gv6kng7rqydxced16nr4"
+          }
+        ]
+      }
+    ],
+    "completedAt": "2026-11-02T04:15:46.627Z",
+    "metrics": {
+      "totalInputTokens": 1193,
+      "totalOutputTokens": 47,
+      "totalTokens": 1240,
+      "totalCacheReadTokens": 1024,
+      "totalReasoningTokens": 0
+    }
+  },
+  "d_resume_after_65s": {
+    "eventTypes": [
+      "turn.created",
+      "mcp.initialize",
+      "tool.response",
+      "model.message",
+      "turn.done"
+    ],
+    "doneStatus": "done",
+    "written": [
+      "one",
+      "two",
+      "delta"
+    ]
+  },
+  "f_first_paused": true,
+  "f_new_message": {
+    "accepted": true,
+    "eventTypes": [
+      "turn.created",
+      "mcp.initialize",
+      "model.message",
+      "turn.done"
+    ],
+    "doneStatus": "done"
+  },
+  "f_old_turn_state": {
+    "status": "done",
+    "output": null,
+    "requiredActions": [
+      {
+        "type": "tool.approval_required",
+        "id": "01m6d7jx7t30nyrfh45fvrbaky",
+        "createdAt": "2026-11-02T04:16:53.498Z",
+        "threadId": "main",
+        "toolCalls": [
+          {
+            "id": "call_00_3KJQbhY8BPe2niv2mnFx5827",
+            "sourceEventId": "01m6d7jwhzv3nr4ra20z9950sp"
+          }
+        ]
+      }
+    ],
+    "completedAt": "2026-11-02T04:16:53.499Z",
+    "metrics": {
+      "totalInputTokens": 1189,
+      "totalOutputTokens": 61,
+      "totalTokens": 1250,
+      "totalCacheReadTokens": 1024,
+      "totalReasoningTokens": 21
+    }
+  },
+  "f_late_approval": {
+    "accepted": false,
+    "error": "HTTP 422: thread main: messages[0] no pending approval for tool_call_id 'call_00_3KJQbhY8BPe2niv2mnFx5827'"
+  }
+}

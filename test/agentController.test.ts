@@ -317,6 +317,14 @@ describe("AgentController: stop", () => {
     };
     const waitingApprovals = (): ScriptedApprovals => new ScriptedApprovals((_c, signal) => rejectOnAbort(signal));
 
+    it("by default (the policy the spike justified) continues the same session", async () => {
+      const r = rig([gatedCalls("m1", [{ id: "c1" }]), answer("same session")], { approvals: waitingApprovals() });
+      await stopDuringPause(r);
+      await r.controller.send("next");
+      expect(r.controller.state).toBe("done");
+      expect(r.client.sessions).toEqual(["sess-1"]);
+    });
+
     it("policy new-session: silently starts a new session and works", async () => {
       const r = rig([gatedCalls("m1", [{ id: "c1" }]), answer("fresh")], { approvals: waitingApprovals(), afterPause: "new-session" });
       await stopDuringPause(r);

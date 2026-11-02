@@ -62,7 +62,12 @@ export type PrepareResult = { ok: true; model?: string } | { ok: false; message:
  */
 export type AfterPausePolicy = "continue" | "new-session";
 
-export const DEFAULT_AFTER_PAUSE: AfterPausePolicy = "new-session";
+/**
+ * Spike result (docs/approval-spike.md, scenario f): TrueForge accepts a new user.message on a session whose
+ * last turn is paused on an approval, so the conversation can simply continue. If a session ever rejects it,
+ * the controller silently falls back to a new session.
+ */
+export const DEFAULT_AFTER_PAUSE: AfterPausePolicy = "continue";
 const MAX_ROUNDS = 100;
 
 export interface ControllerDeps {
