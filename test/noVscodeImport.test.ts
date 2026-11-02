@@ -24,7 +24,7 @@ describe("modules shared with scripts and tests stay free of the vscode API", ()
   it("the pure src/trueforge modules, src/mcp/** and scripts/** do not import vscode", async () => {
     const PURE_TRUEFORGE = ["client", "providers", "events", "runState", "agentController", "sdkAdapter", "uiSinks", "preflight"];
     const PURE_UI = ["protocol", "batcher", "transcript", "webview/markdown"];
-    const PURE_REVIEW = ["hunks", "session", "tracker"];
+    const PURE_REVIEW = ["hunks", "session", "tracker", "checkpoints", "applyCore", "hash", "reviewHandler"];
     const files = [...PURE_TRUEFORGE.map((n) => join(root, `src/trueforge/${n}.ts`)), ...PURE_UI.map((n) => join(root, `src/ui/${n}.ts`)), ...PURE_REVIEW.map((n) => join(root, `src/review/${n}.ts`)), ...(await tsFilesUnder(join(root, "src/mcp"))), ...(await tsFilesUnder(join(root, "scripts")).catch(() => []))];
     expect(files.length).toBeGreaterThan(3);
     for (const file of files) {
