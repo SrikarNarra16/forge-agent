@@ -29,3 +29,16 @@ Short facts worth including later. Keep each one verifiable.
   (and deletes files the run created). Cmd+Z after an apply is one undo step.
 - Same-file proposals are serialised and the later one is recomputed against the new text; different files
   are reviewable at the same time.
+
+## Live verification of the edit path (2 Nov 2026)
+- Product tools, decision store, review handler and controller were driven against a real TrueForge and
+  `deepseek/flash` (in-memory workspace, scripted accept/reject in place of the human, throwaway names
+  `forge-spike-edit*`, TrueForge state identical before and after). Four scenarios, all passing:
+  single edit applied; three-hunk edit with hunk 2 rejected (tool reported `applied 2 of 3 hunks ...;
+  rejected: hunk 2 (line 6): ...` and the agent told the user which hunk was not applied); full rejection
+  (the agent saw `User denied tool call: User rejected all changes to <file>` and did not retry);
+  create_file (`created src/util.py (+3 lines)`).
+- This proves the join that matters: the decision recorded from the model's raw approval arguments is found
+  by the tool call TrueForge sends afterwards (0 decisions left unconsumed in every scenario).
+- The agent followed the instructions: read before editing, small anchors, cited file:line, acknowledged
+  the rejected hunk. Recordings: `test/fixtures/edit/*.jsonl`, replayed by `test/recordedEdits.test.ts`.

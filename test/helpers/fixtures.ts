@@ -9,9 +9,9 @@ export interface RecordedTurn {
   events: StreamEvent[];
 }
 
-/** Loads test/fixtures/approval/<name>.jsonl (see docs/approval-spike.md for the format). */
-export async function loadRecording(name: string): Promise<RecordedTurn[]> {
-  const text = await readFile(join(__dirname, "..", "fixtures", "approval", `${name}.jsonl`), "utf8");
+/** Loads test/fixtures/<folder>/<name>.jsonl (see docs/approval-spike.md for the format). */
+export async function loadRecording(name: string, folder: "approval" | "edit" = "approval"): Promise<RecordedTurn[]> {
+  const text = await readFile(join(__dirname, "..", "fixtures", folder, `${name}.jsonl`), "utf8");
   const turns = new Map<number, RecordedTurn>();
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
