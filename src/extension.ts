@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
       ]),
       panel,
     ),
-    prepare: () => preflight({ bootstrap: () => bootstrapper.run(), getClient, agentName: FORGE_AGENT_NAME, baseUrl: () => status.baseUrl }),
+    prepare: (request) => preflight({ bootstrap: () => bootstrapper.run(), getClient, baseUrl: () => status.baseUrl }, request),
     log: (m) => log.info(m),
   });
 

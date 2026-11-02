@@ -41,7 +41,7 @@ describe("AgentController: plain runs", () => {
     const { controller, client, ui } = rig([answer("Hello!")]);
     expect(client.sessions).toEqual([]);
     const res = await controller.send("  hi  ");
-    expect(res).toEqual({ ok: true, state: "done" });
+    expect(res).toMatchObject({ ok: true, state: "done" });
     expect(client.sessions).toEqual(["sess-1"]);
     expect(client.turns).toEqual([{ sessionId: "sess-1", input: [{ type: "user.message", content: "hi" }] }]);
     expect(ui.states).toEqual(["running", "done"]);
@@ -190,7 +190,7 @@ describe("AgentController: failures", () => {
       throw new Error("socket hang up");
     };
     const { controller, ui } = rig([boom]);
-    await expect(controller.send("hi")).resolves.toEqual({ ok: true, state: "error" });
+    await expect(controller.send("hi")).resolves.toMatchObject({ ok: true, state: "error" });
     expect(ui.notices[0]).toMatchObject({ level: "error", text: expect.stringContaining("socket hang up") });
   });
 
@@ -420,5 +420,116 @@ describe("AgentController: new chat", () => {
     expect(r.ui.resets).toBe(0);
     gate.resolve();
     await run;
+  });
+});
+
+describe("AgentController: fresh-session runs (inline edit) share the lock but not the conversation", () => {
+  it("creates its own session with the requested agent, model and purpose, and leaves the panel session alone", async () => {
+    const r = rig([answer("panel one"), answer("inline"), answer("panel two")]);
+    await r.controller.send("panel question");
+    const inline = await r.controller.send("PROMPT with the file and the selection", { freshSession: true, agentName: "forge-inline", model: "groq/gpt-oss-120b", display: "Edit src/a.py:3: do x", purpose: "inline-edit" });
+    expect(inline).toMatchObject({ ok: true, state: "done" });
+    await r.controller.send("panel follow-up");
+    expect(r.client.sessions).toEqual(["sess-1", "sess-2"]);
+    expect(r.client.sessionSpecs[1]).toEqual({ agentName: "forge-inline", model: "groq/gpt-oss-120b", metadata: { client: "forge-agent", purpose: "inline-edit" } });
+    expect(r.client.turns.map((t) => t.sessionId)).toEqual(["sess-1", "sess-2", "sess-1"]); // the panel kept its conversation
+    expect(r.controller.sessionId).toBe("sess-1");
+  });
+
+  it("shows the display text in the transcript while the agent receives the full prompt", async () => {
+    const r = rig([answer("ok")]);
+    await r.controller.send("FULL GENERATED PROMPT", { freshSession: true, display: "Edit selection: rename x" });
+    expect(r.ui.users).toEqual(["Edit selection: rename x"]);
+    expect(r.client.turns[0]?.input).toEqual([{ type: "user.message", content: "FULL GENERATED PROMPT" }]);
+  });
+
+  it("every fresh run gets a new session, even back to back", async () => {
+    const r = rig([answer("1"), answer("2")]);
+    await r.controller.send("a", { freshSession: true });
+    await r.controller.send("b", { freshSession: true });
+    expect(r.client.sessions).toEqual(["sess-1", "sess-2"]);
+    expect(r.controller.sessionId).toBeUndefined();
+  });
+
+  it("ignores an agent override unless the run is a fresh session", async () => {
+    const r = rig([answer("ok")]);
+    await r.controller.send("hi", { agentName: "forge-inline" });
+    expect(r.client.sessionSpecs[0]).toMatchObject({ agentName: "forge-agent" });
+  });
+
+  it("asks prepare about the agent and model it is about to use, for every fresh run", async () => {
+    const seen: unknown[] = [];
+    const prepare = (request: { agentName: string; model?: string }): Promise<{ ok: true; model: string }> => {
+      seen.push(request);
+      return Promise.resolve({ ok: true, model: request.model ?? "default/model" });
+    };
+    const r = rig([answer("a"), answer("b")], { prepare });
+    await r.controller.send("x", { freshSession: true, agentName: "forge-inline", model: "m/one" });
+    await r.controller.send("y", { freshSession: true, agentName: "forge-inline" });
+    expect(seen).toEqual([{ agentName: "forge-inline", model: "m/one" }, { agentName: "forge-inline" }]);
+    expect(r.ui.sessionsSeen.map((s) => s.model)).toEqual(["m/one", "default/model"]);
+  });
+
+  it("is blocked by a running panel run (ONE global lock) and says so without starting a turn", async () => {
+    const gate = deferred();
+    const r = rig([() => gated([turnCreated()], gate.promise, [turnDone({ status: "done" })])]);
+    const panelRun = r.controller.send("long panel run");
+    await tick();
+    expect(r.controller.runState.busy).toBe(true);
+    expect(await r.controller.send("inline", { freshSession: true })).toEqual({ ok: false, reason: "busy" });
+    expect(r.client.turns).toHaveLength(1);
+    gate.resolve();
+    await panelRun;
+    expect(r.controller.runState.busy).toBe(false);
+  });
+
+  it("Stop during a fresh run cancels THAT run's session, not the panel's", async () => {
+    const gate = deferred();
+    const r = rig([answer("panel"), () => gated([turnCreated()], gate.promise, [turnDone({ status: "cancelled" })])]);
+    await r.controller.send("panel");
+    r.client.onCancel = () => gate.resolve();
+    const run = r.controller.send("inline", { freshSession: true });
+    await tick();
+    await r.controller.stop();
+    await run;
+    expect(r.client.cancels).toEqual(["sess-2"]);
+    expect(r.controller.state).toBe("cancelled");
+  });
+
+  it("a fresh run that pauses on something unsupported does not poison the panel's session", async () => {
+    const pausedForever: TurnScript = () => events(turnCreated(), modelMessage({ id: "q", content: "?", finish: "stop" }), turnDone({ status: "done", required: [{ type: "mystery.action" }] }));
+    const r = rig([answer("panel"), pausedForever, answer("panel again")], { afterPause: "new-session" });
+    await r.controller.send("panel");
+    await r.controller.send("inline", { freshSession: true });
+    await r.controller.send("panel again");
+    expect(r.client.sessions).toEqual(["sess-1", "sess-2"]); // no extra "new session" for the panel
+    expect(r.client.turns.map((t) => t.sessionId)).toEqual(["sess-1", "sess-2", "sess-1"]);
+  });
+});
+
+describe("AgentController: send result", () => {
+  it("returns the run's view so callers can see what happened", async () => {
+    const r = rig([() => events(turnCreated(), modelMessage({ id: "m1", calls: [{ id: "c1", name: "read_file", args: '{"path":"a.py"}' }], finish: "tool_calls" }), toolResponse({ toolCallId: "c1", content: "1| x" }), modelMessage({ id: "m2", content: "All done", finish: "stop" }), turnDone({ status: "done" }))]);
+    const res = await r.controller.send("go");
+    expect(res).toMatchObject({ ok: true, state: "done" });
+    if (!res.ok) return;
+    expect(res.view.toolCalls.map((c) => [c.name, c.status])).toEqual([["read_file", "done"]]);
+    expect(res.view.messages.at(-1)?.text).toBe("All done");
+    expect(res.detail).toBeUndefined();
+  });
+
+  it("returns the error message in `detail` and still a view", async () => {
+    const r = rig([() => events(turnCreated(), turnDone({ status: "error", message: "[Model Error] boom" }))]);
+    const res = await r.controller.send("go");
+    expect(res).toMatchObject({ ok: true, state: "error", detail: "[Model Error] boom" });
+    const cancelled = rig([() => events(turnCreated(), turnDone({ status: "cancelled", reason: "client-cancelled" }))]);
+    expect(await cancelled.controller.send("go")).toMatchObject({ state: "cancelled", detail: "client-cancelled" });
+  });
+
+  it("works when the run failed before any turn existed", async () => {
+    const r = rig([], { prepare: () => Promise.resolve({ ok: false, message: "Model x is not configured" }) });
+    const res = await r.controller.send("go");
+    expect(res).toMatchObject({ ok: true, state: "error", detail: "Model x is not configured" });
+    if (res.ok) expect(res.view.messages).toEqual([]);
   });
 });

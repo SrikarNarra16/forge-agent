@@ -36,8 +36,15 @@ export interface ApprovalHandler {
 export type TurnInput = TrueForgeApi.TurnInputItem;
 
 /** The few TrueForge operations the controller needs (see sdkAdapter.ts). */
+export interface SessionSpec {
+  agentName: string;
+  /** Run the agent on this model instead of the one in its definition (the adapter overrides model.name in the session spec). */
+  model?: string;
+  metadata?: Record<string, string>;
+}
+
 export interface TurnClient {
-  createSession(agentName: string, metadata?: Record<string, string>): Promise<{ id: string }>;
+  createSession(spec: SessionSpec): Promise<{ id: string }>;
   createTurnStream(sessionId: string, input: TurnInput[]): Promise<AsyncIterable<StreamEvent>>;
   cancel(sessionId: string): Promise<void>;
 }
@@ -75,14 +82,36 @@ export interface ControllerDeps {
   agentName: string;
   ui: UiSink;
   approvals: ApprovalHandler;
-  /** Runs before the first turn of a session (bootstrap + model checks). */
-  prepare?: () => Promise<PrepareResult>;
+  /** Runs before the first turn of a session (bootstrap + model checks) for the agent (and model) about to be used. */
+  prepare?: (request: { agentName: string; model?: string }) => Promise<PrepareResult>;
   afterPause?: AfterPausePolicy;
   now?: () => Date;
   log?: (message: string) => void;
 }
 
-export type SendResult = { ok: true; state: RunState } | { ok: false; reason: "busy" | "empty" };
+export interface SendOptions {
+  /** Agent to run. Only honoured together with `freshSession`; the panel always talks to deps.agentName. */
+  agentName?: string;
+  /** Run in a brand-new session that is used once; the panel's session and its history are left alone. */
+  freshSession?: boolean;
+  /** Model to use instead of the agent definition's. */
+  model?: string;
+  /** What the transcript shows as the user's message (the prompt itself may be a long generated message). */
+  display?: string;
+  /** Free-form tag stored in the session metadata, e.g. "inline-edit". */
+  purpose?: string;
+}
+
+export type SendResult =
+  | {
+      ok: true;
+      state: RunState;
+      /** The error message, cancel reason, ... that ended the run, if any. */
+      detail?: string;
+      /** Everything the run produced (messages, tool calls with responses). */
+      view: TurnView;
+    }
+  | { ok: false; reason: "busy" | "empty" };
 
 class StopRequested extends Error {
   constructor(readonly reason = "Stopped") {
@@ -99,9 +128,19 @@ interface SessionRef {
   paused: boolean;
 }
 
+/** What the current run is using; `session` is set once the session exists. */
+interface RunContext {
+  options: SendOptions;
+  session: SessionRef | undefined;
+}
+
 export class AgentController {
   readonly runState = new RunStateMachine();
+  /** The panel's conversation. Fresh-session runs (inline edit) never touch it. */
   private session: SessionRef | undefined;
+  private ctx: RunContext | undefined;
+  private lastView: TurnView | undefined;
+  private lastDetail: string | undefined;
   private abort = new AbortController();
   private stopRequested = false;
   private readonly afterPause: AfterPausePolicy;
@@ -120,7 +159,7 @@ export class AgentController {
   }
 
   /** Runs one user message to completion (including approval rounds). Resolves when the run ends. */
-  async send(text: string): Promise<SendResult> {
+  async send(text: string, options: SendOptions = {}): Promise<SendResult> {
     const message = text.trim();
     if (message === "") return { ok: false, reason: "empty" };
     if (this.runState.busy) {
@@ -130,15 +169,19 @@ export class AgentController {
 
     this.stopRequested = false;
     this.abort = new AbortController();
+    this.ctx = { options, session: undefined };
+    this.lastView = undefined;
+    this.lastDetail = undefined;
     this.runState.transition("running");
-    this.deps.ui.onUserMessage(message);
+    this.deps.ui.onUserMessage(options.display ?? message);
     try {
       await this.run(message);
     } catch (err) {
       if (err instanceof StopRequested) this.finish("cancelled", err.reason);
       else this.fail(err instanceof RunFailed ? err.message : describeError(err));
     }
-    return { ok: true, state: this.runState.state };
+    const view = this.lastView ?? new TurnReducer().view;
+    return { ok: true, state: this.runState.state, view, ...(this.lastDetail !== undefined ? { detail: this.lastDetail } : {}) };
   }
 
   /**
@@ -154,12 +197,13 @@ export class AgentController {
     }
     if (state !== "running") return;
     this.stopRequested = true;
-    if (!this.session) {
+    const session = this.ctx?.session;
+    if (!session) {
       this.abort.abort(); // still preparing/creating the session: no turn exists yet
       return;
     }
     try {
-      await this.deps.client.cancel(this.session.id);
+      await this.deps.client.cancel(session.id);
     } catch (err) {
       this.stopRequested = false;
       this.deps.ui.onNotice("error", `Could not cancel the run: ${describeError(err)}`);
@@ -191,9 +235,11 @@ export class AgentController {
       const stream = await this.openStream(input, round === 0 && continuingPausedSession);
       for await (const event of stream) {
         const change = reducer.apply(event); // apply first: `view` must reflect this event
-        ui.onTurnChange(reducer.view, change);
+        this.lastView = reducer.view;
+        ui.onTurnChange(this.lastView, change);
       }
       const view = reducer.view;
+      this.lastView = view;
 
       if (!view.done) {
         if (this.stopRequested) throw new StopRequested();
@@ -230,7 +276,8 @@ export class AgentController {
       input = calls.map((call, i): TurnInput => {
         const approval = decisions[i] ?? { status: "deny", reason: "No decision was made." };
         const change = reducer.noteApproval(call.id, approval, nowIso);
-        ui.onTurnChange(reducer.view, change);
+        this.lastView = reducer.view;
+        ui.onTurnChange(this.lastView, change);
         return { type: "user.tool_approval", threadId: call.threadId, toolCallId: call.id, approval };
       });
       this.deps.log?.(`approval round ${round + 1}: ${decisions.map((d) => d.status).join(",")}`);
@@ -249,11 +296,17 @@ export class AgentController {
     return Promise.race([Promise.all(calls.map((call) => this.deps.approvals.decide(call, signal))), aborted]);
   }
 
-  /** Makes sure a session exists. Returns true when it deliberately continues a session left paused. */
+  /**
+   * Makes sure the run has a session. A fresh-session run (inline edit) always creates its own and leaves the
+   * panel's alone. Returns true when the run deliberately continues a panel session left paused.
+   */
   private async ensureSession(): Promise<boolean> {
-    const { client, ui, agentName } = this.deps;
+    const { ui } = this.deps;
+    const ctx = this.ctx;
+    if (!ctx) throw new RunFailed("No run in progress.");
+    const fresh = ctx.options.freshSession === true;
     let continuingPaused = false;
-    if (this.session?.paused) {
+    if (!fresh && this.session?.paused) {
       if (this.afterPause === "new-session") {
         this.session = undefined;
         ui.onNotice("info", "Started a new session (the previous one was waiting on an approval).");
@@ -262,27 +315,38 @@ export class AgentController {
         continuingPaused = true;
       }
     }
-    if (this.session) return continuingPaused;
+    if (!fresh && this.session) {
+      ctx.session = this.session;
+      return continuingPaused;
+    }
 
-    let model: string | undefined;
+    const agentName = fresh ? (ctx.options.agentName ?? this.deps.agentName) : this.deps.agentName;
+    const requestedModel = ctx.options.model;
+    let model = requestedModel;
     if (this.deps.prepare) {
-      const prepared = await this.deps.prepare();
+      const prepared = await this.deps.prepare({ agentName, ...(requestedModel ? { model: requestedModel } : {}) });
       if (!prepared.ok) throw new RunFailed(prepared.message);
-      model = prepared.model;
+      model = prepared.model ?? requestedModel;
     }
     if (this.stopRequested) throw new StopRequested();
-    const created = await client.createSession(agentName, { client: "forge-agent" });
-    this.session = { id: created.id, paused: false };
+    const created = await this.deps.client.createSession({
+      agentName,
+      ...(requestedModel ? { model: requestedModel } : {}),
+      metadata: { client: "forge-agent", purpose: ctx.options.purpose ?? (fresh ? "fresh-run" : "panel") },
+    });
+    const ref: SessionRef = { id: created.id, paused: false };
+    ctx.session = ref;
+    if (!fresh) this.session = ref;
     ui.onSession({ sessionId: created.id, ...(model ? { model } : {}) });
     return false;
   }
 
   /**
-   * Opens the turn stream. When the session was left paused and we chose to continue it, a rejection by
+   * Opens the turn stream. When the panel session was left paused and we chose to continue it, a rejection by
    * TrueForge silently falls back to a new session (the user's message is simply sent there instead).
    */
   private async openStream(input: TurnInput[], mayFallBackToNewSession: boolean): Promise<AsyncIterable<StreamEvent>> {
-    const session = this.session;
+    const session = this.ctx?.session;
     if (!session) throw new RunFailed("No session.");
     try {
       return await this.deps.client.createTurnStream(session.id, input);
@@ -291,18 +355,20 @@ export class AgentController {
       this.deps.log?.(`continuing the paused session failed (${describeError(err)}); starting a new session`);
       this.session = undefined;
       await this.ensureSession();
-      const fresh = this.session as SessionRef | undefined;
+      const fresh = this.ctx?.session;
       if (!fresh) throw new RunFailed("No session.");
       return this.deps.client.createTurnStream(fresh.id, input);
     }
   }
 
   private markPaused(): void {
-    if (this.session) this.session.paused = true;
+    // Only the panel's conversation can be continued later; a fresh (inline) session is used once.
+    if (this.ctx?.options.freshSession !== true && this.ctx?.session) this.ctx.session.paused = true;
   }
 
   private finish(state: "done" | "error" | "cancelled", detail?: string): void {
     if (!this.runState.busy) return;
+    this.lastDetail = detail;
     this.runState.transition(state, detail);
   }
 

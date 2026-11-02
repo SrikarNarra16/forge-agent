@@ -17,11 +17,16 @@ export interface BootstrapOutcome {
 export interface PreflightDeps {
   bootstrap: () => Promise<BootstrapOutcome>;
   getClient: () => TrueForge;
-  agentName: string;
   baseUrl: () => string;
 }
 
-export async function preflight(deps: PreflightDeps): Promise<PrepareResult> {
+export interface PreflightRequest {
+  agentName: string;
+  /** A model override; checked instead of the agent definition's model. */
+  model?: string;
+}
+
+export async function preflight(deps: PreflightDeps, request: PreflightRequest): Promise<PrepareResult> {
   const ready = await deps.bootstrap();
   if (!ready.ok) {
     return {
@@ -32,8 +37,14 @@ export async function preflight(deps: PreflightDeps): Promise<PrepareResult> {
           : ready.message,
     };
   }
-  const model = ready.agents.find((a) => a.name === deps.agentName)?.spec.model.name;
-  if (!model) return { ok: true };
+  const agent = ready.agents.find((a) => a.name === request.agentName);
+  if (!agent) {
+    return {
+      ok: false,
+      message: `The agent "${request.agentName}" is not defined in this extension (agents/${request.agentName}.json is missing from the install). Reinstall or update Forge.`,
+    };
+  }
+  const model = request.model ?? agent.spec.model.name;
   try {
     const models = await deps.getClient().models.list();
     if (!models.data.some((m) => m.name === model)) {

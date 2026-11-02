@@ -12,31 +12,40 @@ const clientWith = (names: string[] | Error): TrueForge =>
   ({ models: { list: () => (names instanceof Error ? Promise.reject(names) : Promise.resolve({ data: names.map((name) => ({ name })) })) } }) as unknown as TrueForge;
 
 describe("preflight", () => {
-  const base = { agentName: "forge-agent", baseUrl: () => "http://localhost:8790" };
+  const base = { baseUrl: () => "http://localhost:8790" };
+  const request = { agentName: "forge-agent" };
 
   it("returns the model name when bootstrap worked and the model exists", async () => {
-    await expect(preflight({ ...base, bootstrap: async () => ok(), getClient: () => clientWith(["deepseek/flash", "groq/x"]) })).resolves.toEqual({ ok: true, model: "deepseek/flash" });
+    await expect(preflight({ ...base, bootstrap: async () => ok(), getClient: () => clientWith(["deepseek/flash", "groq/x"]) }, request)).resolves.toEqual({ ok: true, model: "deepseek/flash" });
   });
 
   it("explains an unreachable TrueForge with the start command", async () => {
-    const r = await preflight({ ...base, bootstrap: async () => ({ ok: false, stage: "unreachable", message: "x", agents: [] }), getClient: () => clientWith([]) });
+    const r = await preflight({ ...base, bootstrap: async () => ({ ok: false, stage: "unreachable", message: "x", agents: [] }), getClient: () => clientWith([]) }, request);
     expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/not reachable at http:\/\/localhost:8790.*npm run tf:start.*OUTBOUND_URL_ALLOWED_HOSTS/s) });
   });
 
   it("passes other bootstrap failures through", async () => {
-    const r = await preflight({ ...base, bootstrap: async () => ({ ok: false, stage: "mcp-verify", message: "TrueForge could not use the Forge MCP server", agents: [] }), getClient: () => clientWith([]) });
+    const r = await preflight({ ...base, bootstrap: async () => ({ ok: false, stage: "mcp-verify", message: "TrueForge could not use the Forge MCP server", agents: [] }), getClient: () => clientWith([]) }, request);
     expect(r).toEqual({ ok: false, message: "TrueForge could not use the Forge MCP server" });
   });
 
   it("fails clearly when the model is not configured, or the model list cannot be read", async () => {
-    const missing = await preflight({ ...base, bootstrap: async () => ok("deepseek/flash"), getClient: () => clientWith(["groq/x"]) });
+    const missing = await preflight({ ...base, bootstrap: async () => ok("deepseek/flash"), getClient: () => clientWith(["groq/x"]) }, request);
     expect(missing).toMatchObject({ ok: false, message: expect.stringContaining('Model "deepseek/flash" is not configured') });
-    const broken = await preflight({ ...base, bootstrap: async () => ok(), getClient: () => clientWith(new Error("boom")) });
+    const broken = await preflight({ ...base, bootstrap: async () => ok(), getClient: () => clientWith(new Error("boom")) }, request);
     expect(broken).toMatchObject({ ok: false, message: expect.stringContaining("boom") });
   });
 
-  it("is fine when the agent definition is not among the bootstrapped agents", async () => {
-    await expect(preflight({ ...base, bootstrap: async () => ({ ok: true, stage: "done", message: "", agents: [] }), getClient: () => clientWith([]) })).resolves.toEqual({ ok: true });
+  it("a missing agent definition (e.g. agents/forge-inline.json absent) is a clear error, not a crash", async () => {
+    const r = await preflight({ ...base, bootstrap: async () => ok(), getClient: () => clientWith(["deepseek/flash"]) }, { agentName: "forge-inline" });
+    expect(r).toMatchObject({ ok: false, message: expect.stringContaining('The agent "forge-inline" is not defined in this extension') });
+    expect(r).toMatchObject({ message: expect.stringContaining("agents/forge-inline.json is missing") });
+  });
+
+  it("checks and reports the OVERRIDE model instead of the agent file's model", async () => {
+    const deps = { ...base, bootstrap: async () => ok("deepseek/flash"), getClient: () => clientWith(["deepseek/flash", "groq/gpt-oss-120b"]) };
+    await expect(preflight(deps, { agentName: "forge-agent", model: "groq/gpt-oss-120b" })).resolves.toEqual({ ok: true, model: "groq/gpt-oss-120b" });
+    await expect(preflight(deps, { agentName: "forge-agent", model: "nope/model" })).resolves.toMatchObject({ ok: false, message: expect.stringContaining('Model "nope/model" is not configured') });
   });
 });
 

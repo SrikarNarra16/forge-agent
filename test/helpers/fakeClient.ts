@@ -1,4 +1,4 @@
-import type { ApprovalDecision, ApprovalHandler, NoticeLevel, PendingToolCall, TurnClient, TurnInput, UiSink } from "../../src/trueforge/agentController";
+import type { ApprovalDecision, ApprovalHandler, NoticeLevel, PendingToolCall, SessionSpec, TurnClient, TurnInput, UiSink } from "../../src/trueforge/agentController";
 import type { ReducerChange, StreamEvent, TurnView } from "../../src/trueforge/events";
 import type { RunState } from "../../src/trueforge/runState";
 
@@ -28,6 +28,7 @@ export function deferred<T = void>(): { promise: Promise<T>; resolve: (v: T) => 
 
 export class FakeClient implements TurnClient {
   readonly sessions: string[] = [];
+  readonly sessionSpecs: Array<SessionSpec | undefined> = [];
   readonly turns: Array<{ sessionId: string; input: TurnInput[] }> = [];
   readonly cancels: string[] = [];
   private readonly scripts: TurnScript[];
@@ -43,9 +44,10 @@ export class FakeClient implements TurnClient {
     this.scripts.push(...scripts);
   }
 
-  createSession(): Promise<{ id: string }> {
+  createSession(spec?: SessionSpec): Promise<{ id: string }> {
     const id = `sess-${this.sessions.length + 1}`;
     this.sessions.push(id);
+    this.sessionSpecs.push(spec);
     return Promise.resolve({ id });
   }
 
