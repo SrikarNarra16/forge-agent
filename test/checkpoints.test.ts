@@ -16,9 +16,10 @@ class FakeRestorer implements FileRestorer {
     this.files.set(path, text);
     return Promise.resolve();
   }
-  deleteFile(path: string): Promise<void> {
+  deleteFile(path: string, expectedCurrentHash: string | undefined): Promise<void> {
     if (this.failOn.has(path)) return Promise.reject(new Error(`cannot delete ${path}`));
     this.calls.push(`delete ${path}`);
+    this.hashes.push(expectedCurrentHash);
     this.files.delete(path);
     return Promise.resolve();
   }
@@ -52,10 +53,11 @@ describe("CheckpointStore", () => {
     c.snapshot("r1", "new.py", { existed: false });
     c.snapshot("r1", "b.py", { existed: true, text: "orig b" });
     c.recordApplied("r1", "a.py", "hash-of-a");
+    c.recordApplied("r1", "new.py", "hash-of-new");
     const result = await c.rollbackRun("r1", restorer);
     expect(result).toEqual({ restored: ["b.py", "new.py", "a.py"], failed: [] });
     expect(restorer.calls).toEqual(["restore b.py", "delete new.py", "restore a.py"]);
-    expect(restorer.hashes).toEqual([undefined, "hash-of-a"]);
+    expect(restorer.hashes).toEqual([undefined, "hash-of-new", "hash-of-a"]);
     expect(Object.fromEntries(files)).toEqual({ "a.py": "orig a", "b.py": "orig b" });
     expect(c.has("r1")).toBe(false);
     expect(c.canUndo).toBe(false);

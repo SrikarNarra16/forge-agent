@@ -11,7 +11,8 @@ export interface FileRestorer {
    * warn when the user changed the file since.
    */
   restoreText(path: string, text: string, expectedCurrentHash: string | undefined): Promise<void>;
-  deleteFile(path: string): Promise<void>;
+  /** Delete a file the run created. `expectedCurrentHash` lets the restorer warn if the user edited it since. */
+  deleteFile(path: string, expectedCurrentHash: string | undefined): Promise<void>;
 }
 
 export interface RollbackResult {
@@ -76,7 +77,7 @@ export class CheckpointStore {
     for (const [path, entry] of [...run.entries()].reverse()) {
       try {
         if (entry.snapshot.existed) await restorer.restoreText(path, entry.snapshot.text, entry.appliedHash);
-        else await restorer.deleteFile(path);
+        else await restorer.deleteFile(path, entry.appliedHash);
         run.delete(path);
         result.restored.push(path);
       } catch (err) {
