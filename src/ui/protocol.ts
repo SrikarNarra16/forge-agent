@@ -1,3 +1,4 @@
+import type { ContextViewState } from "../context/view";
 import type { RunState } from "../trueforge/runState";
 
 /**
@@ -7,6 +8,18 @@ import type { RunState } from "../trueforge/runState";
  */
 
 export type { RunState };
+export type { ContextViewPlan, ContextViewRead, ContextViewState, ContextViewItem } from "../context/view";
+
+/** A file or symbol the user pinned with @. */
+export interface MentionRef {
+  kind: "file" | "symbol";
+  value: string;
+}
+
+export interface MentionSuggestionInfo extends MentionRef {
+  /** Extra text for the list, e.g. "src/flask/cli.py:594" for a symbol. */
+  detail?: string;
+}
 
 /** Mirrors ToolCallStatus in src/trueforge/events.ts (checked by test/uiModel.test.ts). */
 export type ToolStatus = "running" | "awaiting_approval" | "done" | "denied";
@@ -67,11 +80,14 @@ export type ExtToWeb =
   | { type: "upsert"; items: ChatItem[] }
   | { type: "status"; status: StatusInfo }
   | { type: "review"; entries: ReviewQueueEntry[] }
+  | { type: "context"; state: ContextViewState }
+  | { type: "mentionResults"; id: number; results: MentionSuggestionInfo[] }
   | { type: "reset" };
 
 export type WebToExt =
   | { type: "ready" }
-  | { type: "send"; text: string }
+  | { type: "send"; text: string; mentions?: MentionRef[] }
+  | { type: "mentionQuery"; id: number; kind: "file" | "symbol"; query: string }
   | { type: "stop" }
   | { type: "newChat" }
   | { type: "undoRun" }
@@ -81,6 +97,22 @@ export type WebToExt =
 const MAX_TEXT = 50_000;
 const MAX_ID = 300;
 const MAX_REASON = 1_000;
+const MAX_MENTIONS = 20;
+const MAX_MENTION_VALUE = 300;
+const MAX_QUERY = 200;
+
+function parseMentionRefs(value: unknown): MentionRef[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_MENTIONS) return undefined;
+  const out: MentionRef[] = [];
+  for (const item of value as unknown[]) {
+    if (!isRecord(item)) return undefined;
+    const { kind, value: v } = item;
+    if ((kind !== "file" && kind !== "symbol") || typeof v !== "string" || v === "" || v.length > MAX_MENTION_VALUE) return undefined;
+    out.push({ kind, value: v });
+  }
+  return out;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -103,7 +135,16 @@ export function parseWebMessage(data: unknown): WebToExt | undefined {
     case "send": {
       const text = data["text"];
       if (typeof text !== "string" || text.trim() === "" || text.length > MAX_TEXT) return undefined;
-      return { type: "send", text };
+      const mentions = parseMentionRefs(data["mentions"]);
+      if (!mentions) return undefined;
+      return { type: "send", text, ...(mentions.length > 0 ? { mentions } : {}) };
+    }
+    case "mentionQuery": {
+      const { id, kind, query } = data;
+      if (typeof id !== "number" || !Number.isInteger(id) || id < 0) return undefined;
+      if (kind !== "file" && kind !== "symbol") return undefined;
+      if (typeof query !== "string" || query.length > MAX_QUERY) return undefined;
+      return { type: "mentionQuery", id, kind, query };
     }
     case "approval": {
       const { callId, decision, reason } = data;

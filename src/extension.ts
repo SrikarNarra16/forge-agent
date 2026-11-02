@@ -1,4 +1,8 @@
 import * as vscode from "vscode";
+import { ContextService } from "./host/contextWiring";
+import { buildTurnContext } from "./context/injection";
+import { describeUsage } from "./context/usageLog";
+import { suggestFiles, suggestSymbols } from "./context/mentions";
 import { VscodeHost } from "./host/vscodeHost";
 import { registerInlineEdit } from "./inline/inlineEdit";
 import { generateToken } from "./mcp/auth";
@@ -67,8 +71,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // The bearer token lives only in memory for this activation; it is never logged or persisted.
   const token = generateToken();
-  const events = new McpEvents(); // read_file emits context:read here; the context panel subscribes in a later prompt
-  const mcp = startMcpServer({ token, host, events, decisions, log: (m) => log.info(m) });
+  const events = new McpEvents(); // read_file emits context:read here; the panel's Context section subscribes below
+  const contextService = new ContextService(host, log);
+  context.subscriptions.push(contextService);
+  contextService.rebuild(); // background; search_code / repo_map scan files until the index is ready
+  const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, log: (m) => log.info(m) });
   mcpStarting = mcp;
   mcp.catch((err: unknown) => log.error("MCP server failed to start", err));
   const getClient = () => createClient(status.baseUrl);
@@ -113,13 +120,45 @@ export function activate(context: vscode.ExtensionContext): void {
   checkpoints.onChange(() => panel.setCanUndo(checkpoints.canUndo));
   context.subscriptions.push(registerInlineEdit({ controller, undo: undoLastRun, memento: context.globalState, log }));
 
+  // Context assembly for panel turns: the <context> block goes to the model, the transcript shows what was typed.
+  let preparing = false;
+  let priorMessageTokens = 0;
+  const sendWithContext = async (text: string, chips: ReadonlyArray<{ kind: "file" | "symbol"; value: string }>): Promise<void> => {
+    if (controller.runState.busy || preparing) return;
+    preparing = true;
+    let turn: Awaited<ReturnType<typeof buildTurnContext>>;
+    try {
+      const budget = vscode.workspace.getConfiguration("forge").get<number>("contextBudgetTokens", 6000);
+      turn = await buildTurnContext(contextService.index, host, { text, chips, budgetTokens: budget });
+    } catch (err) {
+      log.warn(`context assembly failed, sending without context: ${err instanceof Error ? err.message : String(err)}`);
+      turn = { message: text, display: text, blockTokens: 0, plan: { budgetTokens: 0, usedTokens: 0, items: [], warnings: ["Context assembly failed; sent without context."] } };
+    } finally {
+      preparing = false;
+    }
+    log.info(`context: ${turn.plan.items.length} items, ${turn.plan.usedTokens}/${turn.plan.budgetTokens} tokens${turn.plan.retrievalMs !== undefined ? `, retrieved in ${turn.plan.retrievalMs.toFixed(1)} ms` : ""}${turn.plan.note ? `; ${turn.plan.note}` : ""}`);
+    panel.showContext(turn.plan);
+    const result = await controller.send(turn.message, { display: turn.display });
+    if (!result.ok || turn.blockTokens === 0) return;
+    const calls = result.view.usage.filter((u) => u.threadId === (result.view.usage[0]?.threadId ?? "main"));
+    const first = calls[0];
+    if (first) log.info(describeUsage({ message: turn.message, blockTokens: turn.blockTokens, inputTokens: first.inputTokens, messageTokens: first.messageTokens, priorMessageTokens }));
+    const last = calls[calls.length - 1];
+    if (last?.messageTokens !== undefined) priorMessageTokens = last.messageTokens;
+  };
+
   panel.setHandlers({
-    send: (text) => void controller.send(text),
+    send: (text, mentions) => void sendWithContext(text, mentions),
+    suggest: (kind, query) => (kind === "file" ? suggestFiles(contextService.index, query) : suggestSymbols(contextService.index, query)).map((s) => ({ kind: s.kind, value: s.value, ...("detail" in s ? { detail: s.detail } : {}) })),
     stop: () => void controller.stop(),
-    newChat: () => void controller.newChat(),
+    newChat: () => {
+      priorMessageTokens = 0;
+      void controller.newChat();
+    },
     openReview: (callId) => void reviewUi.open(callId),
     undoRun: () => void undoLastRun(),
   });
+  context.subscriptions.push({ dispose: events.onContextRead((e) => panel.noteContextRead(e)) });
   context.subscriptions.push(
     panel,
     vscode.window.registerWebviewViewProvider(AgentViewProvider.viewType, new AgentViewProvider(context.extensionUri, panel)),
@@ -142,6 +181,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await controller.stop();
     }),
     vscode.commands.registerCommand("forge.checkConnection", () => status.check()),
+    vscode.commands.registerCommand("forge.rebuildContextIndex", () => contextService.rebuild()),
     vscode.commands.registerCommand("forge.smokeTest", () => runPrompt(SMOKE_PROMPTS.ping)),
     vscode.commands.registerCommand("forge.smokeTestCode", () => runPrompt(SMOKE_PROMPTS.code)),
     vscode.commands.registerCommand("forge.debugApprovalCard", () => panel.showTestApprovalCard()),

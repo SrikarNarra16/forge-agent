@@ -6,7 +6,10 @@ import type { RunState } from "../trueforge/runState";
 import type { Logger } from "../util/log";
 import { Batcher } from "./batcher";
 import type { ReviewEntry, ReviewTracker } from "../review/tracker";
-import { parseWebMessage, type ChatItem, type ExtToWeb, type ReviewQueueEntry, type StatusInfo } from "./protocol";
+import type { ContextReadEvent } from "../mcp/events";
+import type { ContextViewPlan } from "../context/view";
+import { ContextPanelState } from "./contextState";
+import { parseWebMessage, type ChatItem, type ExtToWeb, type MentionRef, type MentionSuggestionInfo, type ReviewQueueEntry, type StatusInfo } from "./protocol";
 import { Transcript, prettyArgs, summarizeArgs } from "./transcript";
 
 /**
@@ -20,7 +23,9 @@ export const DEFAULT_DENY_REASON = "The user denied this tool call.";
 const FLUSH_INTERVAL_MS = 30;
 
 export interface PanelHandlers {
-  send(text: string): void;
+  send(text: string, mentions: readonly MentionRef[]): void;
+  /** Suggestions for the @ autocomplete. */
+  suggest(kind: "file" | "symbol", query: string): MentionSuggestionInfo[];
   stop(): void;
   newChat(): void;
   /** Open the diff of a pending review. */
@@ -51,6 +56,7 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   private handlers: PanelHandlers | undefined;
   private status: StatusInfo = { state: "idle" };
   private readonly transcript = new Transcript();
+  private readonly contextState = new ContextPanelState();
   private readonly batcher = new Batcher<ChatItem>((items) => this.post({ type: "upsert", items }), FLUSH_INTERVAL_MS);
   private readonly pending = new Map<string, PendingApproval>();
   private readonly testCards = new Set<string>();
@@ -71,6 +77,22 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
       }
       this.post({ type: "review", entries: entries.map(toQueueEntry) });
     });
+  }
+
+  /** A run starts: show the context that was put into its message (undefined = nothing was injected). */
+  showContext(plan: ContextViewPlan | undefined): void {
+    this.contextState.beginRun(plan);
+    this.postContext();
+  }
+
+  /** The agent read a file (read_file); shown live in the Context section with its full reason. */
+  noteContextRead(event: ContextReadEvent): void {
+    this.contextState.addRead(event);
+    this.postContext();
+  }
+
+  private postContext(): void {
+    this.post({ type: "context", state: this.contextState.snapshot() });
   }
 
   /** Enables or disables the "Undo run" button. */
@@ -114,6 +136,8 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
 
   onTurnChange(view: TurnView, change: ReducerChange): void {
     for (const item of this.transcript.applyTurn(view, change)) this.batcher.push(item);
+    const firstCall = view.usage[0];
+    if (firstCall && this.contextState.setModelInputTokens(firstCall.inputTokens)) this.postContext();
     if (change.compaction) {
       this.status = { ...this.status, compacting: view.compaction.active };
       this.post({ type: "status", status: this.status });
@@ -132,6 +156,7 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   onReset(): void {
     this.batcher.clear();
     this.transcript.clear();
+    this.contextState.clear();
     this.post({ type: "reset" });
   }
 
@@ -194,9 +219,13 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
       case "ready":
         this.post({ type: "init", items: [...this.transcript.items], status: this.status });
         this.post({ type: "review", entries: this.tracker.list().map(toQueueEntry) });
+        this.postContext();
         break;
       case "send":
-        this.handlers?.send(message.text);
+        this.handlers?.send(message.text, message.mentions ?? []);
+        break;
+      case "mentionQuery":
+        this.post({ type: "mentionResults", id: message.id, results: this.handlers?.suggest(message.kind, message.query) ?? [] });
         break;
       case "stop":
         this.handlers?.stop();

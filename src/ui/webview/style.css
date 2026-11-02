@@ -78,7 +78,7 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .notice.error { border-left-color: var(--vscode-errorForeground); }
 
 .composer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--vscode-widget-border, #444); flex: none; }
-.composer textarea { flex: 1; resize: vertical; min-height: 2.6em; max-height: 40vh; font: inherit; padding: 4px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #555); border-radius: 2px; }
+.composer textarea { flex: 1; width: 100%; box-sizing: border-box; resize: vertical; min-height: 2.6em; max-height: 40vh; font: inherit; padding: 4px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #555); border-radius: 2px; }
 .composer textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
 
 .queue { flex: none; padding: 6px 8px 0; }
@@ -103,3 +103,32 @@ details.tool > summary::-webkit-details-marker { display: none; }
 
 details.raw-details { margin-top: 6px; }
 details.raw-details > summary { cursor: pointer; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+
+.context-box { flex: none; padding: 6px 8px 0; max-height: 40vh; overflow-y: auto; }
+details.context { border: 1px solid var(--vscode-widget-border, #444); border-radius: 4px; padding: 4px 6px; background: var(--vscode-sideBar-background); }
+details.context > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.ctx-title { font-weight: 600; }
+.ctx-summary { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+.ctx-meter { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.ctx-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--vscode-input-background); overflow: hidden; }
+.ctx-fill { height: 100%; background: var(--vscode-progressBar-background, #0e70c0); }
+.ctx-budget, .ctx-facts { font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+.ctx-facts { margin-top: 2px; }
+.ctx-note { margin-top: 4px; padding: 3px 6px; border-left: 3px solid var(--vscode-charts-yellow, #cca700); background: var(--vscode-textBlockQuote-background); }
+.ctx-warning { margin-top: 3px; font-size: 0.9em; color: var(--vscode-charts-yellow, #cca700); }
+.ctx-group { margin-top: 6px; }
+.ctx-group-title { font-weight: 600; font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+.ctx-row { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; padding: 2px 0; }
+.ctx-loc { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
+.ctx-symbol { color: var(--vscode-symbolIcon-functionForeground, #b180d7); }
+.ctx-tokens { margin-left: auto; font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+.ctx-reason { flex-basis: 100%; font-size: 0.9em; color: var(--vscode-descriptionForeground); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.composer .field { position: relative; flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 6px; border-radius: 10px; font-size: 0.9em; font-family: var(--vscode-editor-font-family); background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+.chip-x { background: transparent; color: inherit; border: none; padding: 0 2px; cursor: pointer; }
+.suggestions { position: absolute; bottom: 100%; left: 0; right: 0; z-index: 10; margin: 0 0 2px; padding: 2px 0; list-style: none; max-height: 40vh; overflow-y: auto; border: 1px solid var(--vscode-widget-border, #555); border-radius: 3px; background: var(--vscode-editorSuggestWidget-background, var(--vscode-sideBar-background)); }
+.suggestions li { display: flex; gap: 8px; padding: 2px 8px; cursor: pointer; font-family: var(--vscode-editor-font-family); }
+.suggestions li.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.suggestions .detail { margin-left: auto; font-size: 0.85em; opacity: 0.7; }

@@ -54,6 +54,10 @@
         "title": "Forge: Stop"
       },
       {
+        "command": "forge.rebuildContextIndex",
+        "title": "Forge: Rebuild Context Index"
+      },
+      {
         "command": "forge.undoLastRun",
         "title": "Forge: Undo Last Agent Run"
       },
