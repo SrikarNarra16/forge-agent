@@ -10,7 +10,7 @@ export interface RecordedTurn {
 }
 
 /** Loads test/fixtures/<folder>/<name>.jsonl (see docs/approval-spike.md for the format). */
-export async function loadRecording(name: string, folder: "approval" | "edit" = "approval"): Promise<RecordedTurn[]> {
+export async function loadRecording(name: string, folder: "approval" | "edit" | "task-a" = "approval"): Promise<RecordedTurn[]> {
   const text = await readFile(join(__dirname, "..", "fixtures", folder, `${name}.jsonl`), "utf8");
   const turns = new Map<number, RecordedTurn>();
   for (const line of text.split("\n")) {
