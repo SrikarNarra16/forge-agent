@@ -13,7 +13,16 @@ export default tseslint.config(
   },
   {
     // These modules run outside the editor too (scripts/tf-setup.ts, vitest), so they must stay vscode-free.
-    files: ["src/trueforge/client.ts", "src/trueforge/providers.ts", "src/mcp/**/*.ts", "scripts/**/*.ts"],
+    files: [
+      "src/trueforge/client.ts",
+      "src/trueforge/providers.ts",
+      "src/trueforge/events.ts",
+      "src/trueforge/runState.ts",
+      "src/trueforge/agentController.ts",
+      "src/trueforge/sdkAdapter.ts",
+      "src/mcp/**/*.ts",
+      "scripts/**/*.ts",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
