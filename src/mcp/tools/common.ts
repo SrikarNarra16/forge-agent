@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { isInside } from "../../util/paths";
 import { HostError } from "../host";
+import { DecisionStore } from "../decisions";
 import type { McpEvents } from "../events";
 
 /** Shared helpers for the MCP tools: dependencies, path safety, result builders and the tool runner. */
@@ -29,13 +30,15 @@ export interface ToolDeps {
   log: (message: string) => void;
   events: McpEvents;
   budgets: ToolBudgets;
+  /** What the user decided for propose_edit / create_file calls (written by the extension's review handler). */
+  decisions: DecisionStore;
 }
 
-export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets> }): ToolDeps {
-  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets } };
+export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets>; decisions?: DecisionStore }): ToolDeps {
+  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets }, decisions: deps.decisions ?? new DecisionStore() };
 }
 
-/** Every tool here only reads; annotations are informational, gating is by name in the agent spec. */
+/** Annotations for the read-only tools; annotations are informational, gating is by NAME in the agent spec. */
 export const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 
 /** Path segments the agent can never address, even with an explicit path. */

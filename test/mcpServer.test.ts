@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startMcpServer, type McpServerHandle } from "../src/mcp/server";
-import { TOOL_NAMES } from "../src/mcp/tools/index";
+import { READ_TOOL_NAMES, TOOL_NAMES } from "../src/mcp/tools/index";
 import { FIXTURE_FILES, FakeHost } from "./helpers/fakeHost";
 
 const TOKEN = "test-token";
@@ -52,7 +52,8 @@ describe("MCP server", () => {
     try {
       const tools = await client.listTools();
       expect(tools.tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
-      expect(tools.tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
+      const readOnly = tools.tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name).sort();
+      expect(readOnly).toEqual([...READ_TOOL_NAMES].sort());
       const result = await client.callTool({ name: "ping", arguments: {} });
       expect(result.content).toEqual([{ type: "text", text: "pong from forge-editor" }]);
       const read = await client.callTool({ name: "read_file", arguments: { path: "src/app/helpers.py", start: 4, end: 4, why: "check the server wiring" } });
