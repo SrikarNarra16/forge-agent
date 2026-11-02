@@ -27,6 +27,8 @@ export default tseslint.config(
       "src/ui/transcript.ts",
       "src/ui/webview/markdown.ts",
       "src/ui/webview/format.ts",
+      "src/inline/message.ts",
+      "src/inline/runner.ts",
       "src/review/hunks.ts",
       "src/review/session.ts",
       "src/review/tracker.ts",
