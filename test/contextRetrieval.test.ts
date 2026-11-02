@@ -115,8 +115,6 @@ describe("retrieve", () => {
 
 describe("diversify", () => {
   it("allows at most 2 chunks per file unless a further chunk scores close to the best", async () => {
-    const many = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`src/m.py`, ""] as const).slice(0, 0));
-    void many;
     const body = Array.from({ length: 6 }, (_, i) => `def handler_${i}():\n    """handle widgets ${i}"""\n    return ${i}\n`).join("\n\n");
     const { index } = await build({ "src/widgets.py": body, "src/other.py": "def handler_other():\n    return 0\n" });
     const hits = index.search("handler widgets", { limit: 60 });
