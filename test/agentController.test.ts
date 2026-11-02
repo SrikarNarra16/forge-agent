@@ -47,6 +47,7 @@ describe("AgentController: plain runs", () => {
     expect(ui.states).toEqual(["running", "done"]);
     expect(ui.users).toEqual(["hi"]);
     expect(ui.lastView?.messages[0]?.text).toBe("Hello!");
+    expect(ui.lastView?.done?.status).toBe("done"); // regression: the sink must see the view AFTER the last event
     expect(ui.sessionsSeen).toEqual([{ sessionId: "sess-1" }]);
   });
 

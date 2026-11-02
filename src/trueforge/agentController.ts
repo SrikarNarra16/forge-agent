@@ -189,7 +189,10 @@ export class AgentController {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       reducer.beginRound();
       const stream = await this.openStream(input, round === 0 && continuingPausedSession);
-      for await (const event of stream) ui.onTurnChange(reducer.view, reducer.apply(event));
+      for await (const event of stream) {
+        const change = reducer.apply(event); // apply first: `view` must reflect this event
+        ui.onTurnChange(reducer.view, change);
+      }
       const view = reducer.view;
 
       if (!view.done) {
@@ -226,7 +229,8 @@ export class AgentController {
       const nowIso = (this.deps.now?.() ?? new Date()).toISOString();
       input = calls.map((call, i): TurnInput => {
         const approval = decisions[i] ?? { status: "deny", reason: "No decision was made." };
-        ui.onTurnChange(reducer.view, reducer.noteApproval(call.id, approval, nowIso));
+        const change = reducer.noteApproval(call.id, approval, nowIso);
+        ui.onTurnChange(reducer.view, change);
         return { type: "user.tool_approval", threadId: call.threadId, toolCallId: call.id, approval };
       });
       this.deps.log?.(`approval round ${round + 1}: ${decisions.map((d) => d.status).join(",")}`);
