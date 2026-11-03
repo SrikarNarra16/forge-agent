@@ -48,6 +48,12 @@ export interface TurnClient {
   createSession(spec: SessionSpec): Promise<{ id: string }>;
   createTurnStream(sessionId: string, input: TurnInput[], options?: { signal?: AbortSignal }): Promise<AsyncIterable<StreamEvent>>;
   cancel(sessionId: string): Promise<void>;
+  /** Status of a turn: "running" while the server is still working on it. Used to recover from a dropped stream. */
+  getTurnStatus?(sessionId: string, turnId: string): Promise<string>;
+  /** Re-attaches to a turn; `afterSequenceNumber` = how many of its events were already received (all events count, deltas too). */
+  subscribeToTurn?(sessionId: string, turnId: string, options: { afterSequenceNumber: number; signal?: AbortSignal }): Promise<AsyncIterable<StreamEvent>>;
+  /** The compact event log of a (finished) turn: turn.created, the merged model messages, tool events, turn.done. */
+  listTurnEvents?(sessionId: string, turnId: string): Promise<StreamEvent[]>;
 }
 
 export type NoticeLevel = "info" | "warning" | "error";
@@ -349,17 +355,7 @@ export class AgentController {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       reducer.beginRound();
       const stream = await this.openStream(input, round === 0 && continuingPausedSession);
-      try {
-        for await (const event of stream) {
-          if (this.stopRequested) break; // late events after Stop are ignored
-          const change = reducer.apply(event); // apply first: `view` must reflect this event
-          this.lastView = reducer.view;
-          ui.onTurnChange(this.lastView, change);
-        }
-      } catch (err) {
-        if (this.stopRequested) throw new StopRequested(); // the aborted reader throws; that is the Stop we asked for
-        throw err;
-      }
+      await this.consumeRound(stream, reducer);
       if (this.stopRequested) throw new StopRequested();
       const view = reducer.view;
       this.lastView = view;
@@ -406,6 +402,89 @@ export class AgentController {
       this.deps.log?.(`approval round ${round + 1}: ${decisions.map((d) => d.status).join(",")}`);
     }
     throw new RunFailed(`The agent kept asking for approvals (more than ${MAX_ROUNDS} rounds); stopping.`);
+  }
+
+  /** Applies one event to the reducer and the UI. */
+  private applyEvent(event: StreamEvent, reducer: TurnReducer): void {
+    const change = reducer.apply(event); // apply first: `view` must reflect this event
+    this.lastView = reducer.view;
+    this.deps.ui.onTurnChange(this.lastView, change);
+  }
+
+  /**
+   * Feeds one round's stream to the reducer. When the stream throws or ends without turn.done (a dropped connection,
+   * "terminated"), the turn may still be running on the server: ask for its status; if running, re-attach ONCE after the
+   * events already received; if finished, rebuild the end state from the turn's event log; otherwise give up with the
+   * real reason. Every attempt is logged.
+   */
+  private async consumeRound(stream: AsyncIterable<StreamEvent>, reducer: TurnReducer): Promise<void> {
+    const { log } = this.deps;
+    let seen = 0;
+    let turnId: string | undefined;
+    const feed = async (source: AsyncIterable<StreamEvent>): Promise<unknown> => {
+      try {
+        for await (const event of source) {
+          if (this.stopRequested) return undefined; // late events after Stop are ignored
+          if (event.type === "turn.created") turnId = event.turnId;
+          seen++;
+          this.applyEvent(event, reducer);
+        }
+        return undefined;
+      } catch (err) {
+        if (this.stopRequested) throw new StopRequested(); // the aborted reader throws; that is the Stop we asked for
+        return err ?? new Error("stream error");
+      }
+    };
+
+    const failure = await feed(stream);
+    if (this.stopRequested || reducer.view.done) return;
+
+    const session = this.ctx?.session;
+    const client = this.deps.client;
+    const reason = failure !== undefined ? describeError(failure) : "the stream ended without turn.done";
+    if (!session || !turnId || !client.getTurnStatus) {
+      if (failure !== undefined) throw failure; // cannot recover: report the actual error
+      return; // the caller reports "connection ended"
+    }
+    log?.(`stream interrupted after ${seen} events (${reason}); checking turn ${turnId}`);
+    let status: string;
+    try {
+      status = await client.getTurnStatus(session.id, turnId);
+    } catch (err) {
+      log?.(`resume: could not read the turn status (${describeError(err)})`);
+      if (failure !== undefined) throw new RunFailed(`The connection to TrueForge was lost (${reason}) and the turn status could not be read (${describeError(err)}).`);
+      return;
+    }
+    if (status === "running") {
+      if (!client.subscribeToTurn) return;
+      log?.(`resume: turn still running; re-attaching after event ${seen}`);
+      let again: AsyncIterable<StreamEvent>;
+      try {
+        again = await client.subscribeToTurn(session.id, turnId, { afterSequenceNumber: seen, signal: this.abort.signal });
+      } catch (err) {
+        if (this.stopRequested) throw new StopRequested();
+        throw new RunFailed(`The connection to TrueForge was lost (${reason}) and re-attaching to the turn failed: ${describeError(err)}`);
+      }
+      const second = await feed(again);
+      if (!this.stopRequested && !reducer.view.done) {
+        throw new RunFailed(`The connection to TrueForge dropped again after resuming (${second !== undefined ? describeError(second) : "the stream ended without turn.done"}).`);
+      }
+      log?.(`resume: re-attached stream delivered ${seen} events in total`);
+      return;
+    }
+    if (client.listTurnEvents) {
+      log?.(`resume: turn is ${status}; rebuilding the final state from its event log`);
+      let list: StreamEvent[];
+      try {
+        list = await client.listTurnEvents(session.id, turnId);
+      } catch (err) {
+        throw new RunFailed(`The connection to TrueForge was lost (${reason}) and the finished turn could not be read: ${describeError(err)}`);
+      }
+      for (const event of list) {
+        if (this.stopRequested) throw new StopRequested();
+        this.applyEvent(event, reducer); // the reducer is idempotent for these (same ids replace)
+      }
+    }
   }
 
   /** Asks the handler about every pending call at the same time; results keep TrueForge's order. */

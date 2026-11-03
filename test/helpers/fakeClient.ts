@@ -35,6 +35,11 @@ export class FakeClient implements TurnClient {
   /** Called when cancel() is invoked. */
   onCancel: (sessionId: string) => void = () => undefined;
   cancelError: Error | undefined;
+  /** Optional recovery hooks (stream drop tests). */
+  turnStatus: ((sessionId: string, turnId: string) => Promise<string>) | undefined;
+  subscribe: ((sessionId: string, turnId: string, options: { afterSequenceNumber: number }) => Promise<AsyncIterable<StreamEvent>>) | undefined;
+  listEvents: ((sessionId: string, turnId: string) => Promise<StreamEvent[]>) | undefined;
+  readonly resumeCalls: string[] = [];
 
   constructor(...scripts: TurnScript[]) {
     this.scripts = [...scripts];
@@ -56,6 +61,24 @@ export class FakeClient implements TurnClient {
     const script = this.scripts.shift();
     if (!script) throw new Error("FakeClient: no script left for this turn");
     return script(input, sessionId);
+  }
+
+  getTurnStatus(sessionId: string, turnId: string): Promise<string> {
+    this.resumeCalls.push(`status:${turnId}`);
+    if (!this.turnStatus) return Promise.reject(new Error("no turnStatus hook"));
+    return this.turnStatus(sessionId, turnId);
+  }
+
+  subscribeToTurn(sessionId: string, turnId: string, options: { afterSequenceNumber: number }): Promise<AsyncIterable<StreamEvent>> {
+    this.resumeCalls.push(`subscribe:${turnId}:after=${options.afterSequenceNumber}`);
+    if (!this.subscribe) return Promise.reject(new Error("no subscribe hook"));
+    return this.subscribe(sessionId, turnId, options);
+  }
+
+  listTurnEvents(sessionId: string, turnId: string): Promise<StreamEvent[]> {
+    this.resumeCalls.push(`list:${turnId}`);
+    if (!this.listEvents) return Promise.reject(new Error("no listEvents hook"));
+    return this.listEvents(sessionId, turnId);
   }
 
   cancel(sessionId: string): Promise<void> {

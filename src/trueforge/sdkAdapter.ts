@@ -1,5 +1,6 @@
 import type { TrueForge, TrueForgeApi } from "@truefoundry/trueforge-sdk";
 import type { SessionSpec, TurnClient } from "./agentController";
+import type { StreamEvent } from "./events";
 
 /**
  * Adapts the TrueForge SDK client to the small TurnClient interface the controller depends on. Takes a
@@ -35,6 +36,21 @@ export function createSdkTurnClient(getClient: () => TrueForge): TurnClient {
     },
     async cancel(sessionId) {
       await getClient().sessions.cancel(sessionId);
+    },
+    async getTurnStatus(sessionId, turnId) {
+      const res = await getClient().sessions.getTurn(sessionId, turnId);
+      return String((res.data as { state?: { status?: string } }).state?.status ?? "unknown");
+    },
+    async subscribeToTurn(sessionId, turnId, options) {
+      const stream = await getClient().sessions.subscribeToTurn(sessionId, turnId, { afterSequenceNumber: options.afterSequenceNumber }, options.signal ? { abortSignal: options.signal } : undefined);
+      return (async function* () {
+        for await (const event of stream) yield event;
+      })();
+    },
+    async listTurnEvents(sessionId, turnId) {
+      const events: StreamEvent[] = [];
+      for await (const event of await getClient().sessions.listTurnEvents(sessionId, turnId, { limit: 100 })) events.push(event as unknown as StreamEvent);
+      return events;
     },
   };
 }
