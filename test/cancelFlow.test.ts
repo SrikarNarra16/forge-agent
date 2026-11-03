@@ -218,3 +218,39 @@ describe("the ordered Stop flow", () => {
     expect(describeRollback({ restored: [], skipped: [], failed: [] })).toBe("Cancelled. Nothing had been changed.");
   });
 });
+
+import { snapshotSelection } from "../src/inline/message";
+import { runInlineEdit, type InlineUi } from "../src/inline/runner";
+
+function snap() {
+  const text = "def get_debug_flag():\n    return False\n";
+  const r = snapshotSelection({ text, start: { line: 0, character: 0 }, end: { line: 1, character: 17 }, path: "src/flask/helpers.py", languageId: "python" });
+  if (!r.ok) throw new Error("selection");
+  return r.snapshot;
+}
+
+describe("inline edit follows exactly the same Stop path", () => {
+  it("forge.stop on an inline run: the diff is closed (approval aborted), rollback runs, the indicator is removed and the outcome is 'cancelled'", async () => {
+    const approvals = new ScriptedApprovals((_c, signal) => rejectOnAbort(signal));
+    const gatedTurn: TurnScript = () => events(turnCreated(), modelMessage({ id: "m1", calls: [{ id: "c1", name: "propose_edit" }], finish: "tool_calls" }), ...pausedOnApprovals([{ id: "c1", sourceEventId: "m1" }]));
+    const rollbacks: string[] = [];
+    const { controller } = rig([gatedTurn], { rollback: (id) => (rollbacks.push(id), Promise.resolve({ restored: ["src/flask/helpers.py"], skipped: [], failed: [] })) }, approvals);
+    const log: string[] = [];
+    const ui: InlineUi = {
+      busy: () => log.push("busy"),
+      running: () => (log.push("running"), () => log.push("hidden")),
+      applied: (m) => log.push(`applied:${m}`),
+      info: (m) => log.push(`info:${m}`),
+      error: (m) => log.push(`error:${m}`),
+    };
+    const outcome = runInlineEdit({ controller, ui, agentName: "forge-inline" }, { snapshot: snap(), instruction: "do it" });
+    await tick();
+    expect(controller.state).toBe("awaitingApproval");
+    await controller.stop(); // what forge.stop (the status bar item) calls
+    await expect(outcome).resolves.toMatchObject({ kind: "cancelled" });
+    expect(approvals.signals.every((s) => s.aborted)).toBe(true); // the review closes on this signal
+    expect(rollbacks).toEqual(["run-1"]);
+    expect(log).toContain("hidden"); // the status bar item is removed
+    expect(controller.state).toBe("cancelled");
+  });
+});

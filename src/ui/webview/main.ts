@@ -2,6 +2,7 @@
 import type { ChatItem, ExtToWeb, MentionRef, MentionSuggestionInfo, RunState, StatusInfo, WebToExt } from "../protocol";
 import { hasContext } from "./contextModel";
 import { renderContext } from "./contextView";
+import { shouldStickToBottom } from "./scroll";
 import { findMentionTrigger, type MentionTrigger } from "./mention";
 import { renderItem, renderReviewQueue, type RenderHandlers } from "./render";
 import "./style.css";
@@ -95,7 +96,7 @@ function mount(): void {
     onOpenReview: (callId) => post({ type: "openReview", callId }),
   };
 
-  const nearBottom = (): boolean => transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
+  const nearBottom = (): boolean => shouldStickToBottom(transcript.scrollHeight, transcript.scrollTop, transcript.clientHeight);
   const refreshEmpty = (): void => {
     if (elements.size === 0) {
       if (!empty.isConnected) transcript.appendChild(empty);
