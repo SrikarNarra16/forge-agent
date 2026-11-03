@@ -167,7 +167,7 @@ describe("eval report", () => {
     runId: "2026-11-03-1-r1", date: "2026-11-03", task: "b", model: "deepseek/flash", accept: "all", pass: false,
     checks: [{ id: "a", name: "files", pass: true, detail: "" }, { id: "b", name: "pytest", pass: false, detail: "1 failed | x" }],
     seconds: 61.2, state: "done", modelCalls: 7, toolCalls: { read_file: 3, propose_edit: 3 }, filesRead: [], keyFilesInContext: ["src/flask/cli.py"], keyFilesRead: [],
-    contextItems: 8, contextTokens: 3000, tokens: { input: 1000, output: 200, calls: 7 }, finalMessage: "", errors: [], providerError: false, attempts: 1, attemptKinds: ["pass"], ranTests: true, usedDeferredLoading: false, usedScout: false, commands: [], changedFiles: [],
+    contextPaths: [], contextItems: 8, contextTokens: 3000, tokens: { input: 1000, output: 200, calls: 7 }, finalMessage: "", errors: [], providerError: false, attempts: 1, attemptKinds: ["pass"], ranTests: true, usedDeferredLoading: false, usedScout: false, commands: [], changedFiles: [],
   };
   it("renders a markdown row that cannot break the table", () => {
     const row = tableRow(base);

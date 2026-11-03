@@ -25,6 +25,8 @@ export interface RunReport {
   /** Task B: the three key files that were in the injected context / read by the agent anyway. */
   keyFilesInContext: string[];
   keyFilesRead: string[];
+  /** Every file path the retrieval put into the context block (Task B). */
+  contextPaths: string[];
   contextItems: number;
   contextTokens: number;
   tokens: { input: number; output: number; calls: number } | undefined;
@@ -61,6 +63,7 @@ export function tableRow(r: RunReport): string {
     `${r.seconds.toFixed(0)}s`,
     `${r.modelCalls} model calls`,
     tools || "no tools",
+    r.task === "b" && r.changedFiles.length ? `changed ${r.changedFiles.length} (${contextLink(r).filter((l) => l.inContext).length} surfaced in context)` : "",
     r.task === "b" ? `key files in context ${r.keyFilesInContext.length}/3, read ${r.keyFilesRead.length}/3` : "",
     r.accept !== "all" ? `accept=${r.accept}` : "",
     r.providerError ? "PROVIDER ERROR" : "",
@@ -146,4 +149,18 @@ export function formatSummary(reports: readonly RunReport[]): string {
     `Failures: ${s.agentFailures} agent, ${s.providerFailures} provider (after retries); ${s.providerAttempts} provider-failed attempt(s) in total over ${s.attempts} attempt(s)`,
     `Behaviour (answered runs): ran tests ${s.ranTests}/${answered}, used deferred tools ${s.usedDeferredLoading}/${answered}, used a scout ${s.usedScout}/${answered}`,
   ].join("\n");
+}
+
+/** Per run: the changed files and whether the retrieval had already surfaced each one in the context block. */
+export function contextLink(r: Pick<RunReport, "changedFiles" | "contextPaths">): Array<{ file: string; inContext: boolean }> {
+  return r.changedFiles.map((file) => ({ file, inContext: r.contextPaths.includes(file) }));
+}
+
+export function formatContextLink(reports: readonly RunReport[]): string {
+  const lines = ["Context -> edit link (changed files; ✓ = the retrieval had already put it in the context block):"];
+  for (const r of reports) {
+    const link = contextLink(r);
+    lines.push(`  ${r.runId}: ${link.length === 0 ? "(no files changed)" : link.map((l) => `${l.inContext ? "✓" : "✗"} ${l.file}`).join(", ")}${link.length ? `  [${link.filter((l) => l.inContext).length}/${link.length} surfaced]` : ""}`);
+  }
+  return lines.join("\n");
 }

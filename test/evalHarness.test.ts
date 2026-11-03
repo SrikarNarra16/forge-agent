@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HarnessCommandApproval, harnessAllows } from "../scripts/eval/commands";
 import { assertThrowaway, extrasName } from "../scripts/eval/guard";
 import { checkLimits, totalsOf, type LedgerEntry } from "../scripts/eval/ledger";
-import { formatSummary, summarize, type RunReport } from "../scripts/eval/report";
+import { contextLink, formatContextLink, formatSummary, summarize, type RunReport } from "../scripts/eval/report";
 import { BACKOFF_MS, OutageGuard, ProviderOutage, classifyFailure, withRetries } from "../scripts/eval/retry";
 import { deriveSignals } from "../scripts/eval/signals";
 import type { TurnView, ToolCallInfo } from "../src/trueforge/events";
@@ -143,7 +143,7 @@ describe("behaviour signals", () => {
 describe("summary counts provider failures separately", () => {
   const base: RunReport = {
     runId: "x", date: "d", task: "b", model: "m", accept: "all", pass: true, checks: [{ id: "a", name: "files", pass: true, detail: "" }], seconds: 1, state: "done", modelCalls: 1, toolCalls: {}, filesRead: [],
-    keyFilesInContext: [], keyFilesRead: [], contextItems: 0, contextTokens: 0, tokens: undefined, finalMessage: "", errors: [], providerError: false, attempts: 1, attemptKinds: ["pass"], ranTests: true, usedDeferredLoading: true, usedScout: false, commands: [], changedFiles: [],
+    keyFilesInContext: [], keyFilesRead: [], contextPaths: [], contextItems: 0, contextTokens: 0, tokens: undefined, finalMessage: "", errors: [], providerError: false, attempts: 1, attemptKinds: ["pass"], ranTests: true, usedDeferredLoading: true, usedScout: false, commands: [], changedFiles: [],
   };
   it("excludes provider-failed runs from per-check rates and reports attempts", () => {
     const reports: RunReport[] = [
@@ -156,5 +156,15 @@ describe("summary counts provider failures separately", () => {
     const text = formatSummary(reports);
     expect(text).toMatch(/1\/3 runs passed \(1\/2 of the runs that got an answer\)/);
     expect(text).toMatch(/Failures: 1 agent, 1 provider/);
+  });
+});
+
+describe("context -> edit link", () => {
+  it("marks which changed files the retrieval had already surfaced", () => {
+    const r = { runId: "r1", changedFiles: ["docs/api.rst", "docs/cli.rst", "src/flask/cli.py"], contextPaths: ["docs/cli.rst", "src/flask/cli.py", "tests/test_cli.py"] };
+    expect(contextLink(r)).toEqual([{ file: "docs/api.rst", inContext: false }, { file: "docs/cli.rst", inContext: true }, { file: "src/flask/cli.py", inContext: true }]);
+    const text = formatContextLink([r as never]);
+    expect(text).toContain("r1: ✗ docs/api.rst, ✓ docs/cli.rst, ✓ src/flask/cli.py  [2/3 surfaced]");
+    expect(formatContextLink([{ runId: "r2", changedFiles: [], contextPaths: [] } as never])).toContain("(no files changed)");
   });
 });

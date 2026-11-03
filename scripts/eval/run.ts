@@ -39,7 +39,7 @@ import { agentName, assertThrowaway, extrasName, mcpName, snapshotDiff, type Sna
 import { DEFAULT_RUN_LIMIT, DEFAULT_TOKEN_LIMIT, appendLedger, checkLimits, readLedger, totalsOf } from "./ledger";
 import { OutageGuard, ProviderOutage, classifyFailure, withRetries } from "./retry";
 import { deriveSignals } from "./signals";
-import { appendResults, formatSummary, type EvalCheck, type RunReport } from "./report";
+import { appendResults, formatContextLink, formatSummary, type EvalCheck, type RunReport } from "./report";
 import { REQUIRED_FILES, changedFiles, formatScore, scoreTaskB } from "./score-task-b";
 import { FIXTURE_PYTHON, createWorkspace, pythonEnv, type Workspace } from "./workspace";
 
@@ -175,6 +175,7 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
   const reads: ContextReadEvent[] = [];
   let keyFilesInContext: string[] = [];
   let contextItems = 0;
+  let contextPaths: string[] = [];
   let contextTokens = 0;
   let checks: EvalCheck[] = [];
   let changed: string[] = [];
@@ -262,6 +263,7 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
       sendText = turn.message;
       keyFilesInContext = REQUIRED_FILES.filter((f) => turn.plan.items.some((i) => i.path === f));
       contextItems = turn.plan.items.length;
+      contextPaths = [...new Set(turn.plan.items.map((i) => i.path))];
       contextTokens = turn.plan.usedTokens;
       log(`    context: ${contextItems} items, ${contextTokens}/${turn.plan.budgetTokens} tokens, ${turn.plan.retrievalMs?.toFixed(1)} ms; key files in context: ${keyFilesInContext.join(", ") || "none"}`);
       options = { display: turn.display, purpose: "eval-task-b" };
@@ -322,6 +324,7 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
     filesRead,
     keyFilesInContext,
     keyFilesRead: REQUIRED_FILES.filter((f) => filesRead.includes(f)),
+    contextPaths,
     contextItems,
     contextTokens,
     tokens: usage.length > 0 ? { input: usage.reduce((n, u) => n + u.inputTokens, 0), output: usage.reduce((n, u) => n + (u.outputTokens ?? 0), 0), calls: usage.length } : undefined,
@@ -443,6 +446,7 @@ async function main(): Promise<number> {
   for (const r of reports) await writeFile(join(ROOT, "eval-output", `${r.runId}-${r.task}.json`), JSON.stringify(r, null, 2), "utf8");
   await appendResults(join(ROOT, "docs", "eval-results.md"), reports);
   log(`\n${formatSummary(reports)}`);
+  if (task === "b") log(`\n${formatContextLink(reports)}`);
   log("\n| Run id | Task | Model | Result | Checks | Tokens in/out | Seconds |\n|---|---|---|---|---|---|---|");
   for (const r of reports) log(`| ${r.runId} | ${r.task.toUpperCase()} | ${r.model} | ${r.pass ? "PASS" : "FAIL"}${r.providerError ? " (provider error)" : ""} | ${r.checks.map((k) => `${k.id}${k.pass ? "✓" : "✗"}`).join(" ")} | ${r.tokens ? `${r.tokens.input}/${r.tokens.output}` : "n/a"} | ${r.seconds.toFixed(0)} |`);
   if (stopped && /LIMIT/.test(stopped)) return 4;
