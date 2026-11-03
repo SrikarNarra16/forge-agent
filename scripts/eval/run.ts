@@ -37,7 +37,7 @@ import { autoPresenter, diskReviewEditor, type AcceptMode } from "./diskEditor";
 import { HarnessCommandApproval } from "./commands";
 import { agentName, assertThrowaway, extrasName, mcpName, snapshotDiff, type Snapshot } from "./guard";
 import { DEFAULT_RUN_LIMIT, DEFAULT_TOKEN_LIMIT, appendLedger, checkLimits, readLedger, totalsOf } from "./ledger";
-import { classifyFailure, withRetries } from "./retry";
+import { OutageGuard, ProviderOutage, classifyFailure, withRetries } from "./retry";
 import { deriveSignals } from "./signals";
 import { appendResults, formatSummary, type EvalCheck, type RunReport } from "./report";
 import { REQUIRED_FILES, changedFiles, formatScore, scoreTaskB } from "./score-task-b";
@@ -391,6 +391,7 @@ async function main(): Promise<number> {
     return 4;
   }
 
+  const outage = new OutageGuard({ log });
   const reports: RunReport[] = [];
   let stopped: string | undefined;
   for (let n = 1; n <= runs && stopped === undefined; n++) {
@@ -398,11 +399,13 @@ async function main(): Promise<number> {
       (attempt) => runOnce({ client, task, model, accept, timeoutSeconds, runNumber: n, log, cleanups }, attempt).then(async (report) => {
         const entry = { runId: report.runId, task, model: report.model, attempt, input: report.tokens?.input ?? 0, output: report.tokens?.output ?? 0, at: new Date().toISOString() };
         await appendLedger(ledgerFile, entry);
+        outage.record(!report.pass && report.providerError);
         const totals = totalsOf(await readLedger(ledgerFile));
-        log(`    cost guard: running total ${totals.total.toLocaleString("en-US")} tokens (${totals.input.toLocaleString("en-US")} in / ${totals.output.toLocaleString("en-US")} out) over ${totals.attempts} attempt(s)`);
+        log(`    cost guard: running total ${totals.total.toLocaleString("en-US")} tokens (${totals.input.toLocaleString("en-US")} in / ${totals.output.toLocaleString("en-US")} out) over ${totals.attempts} counted attempt(s) (+${totals.providerFailures} provider failure(s) with no tokens, not counted)`);
         return report;
       }),
       {
+        beforeAttempt: () => outage.beforeAttempt(),
         retryable: async (r) => {
           if (r.pass || !r.providerError) return false;
           const limit = checkLimits(totalsOf(await readLedger(ledgerFile)), limits);
@@ -412,7 +415,7 @@ async function main(): Promise<number> {
         },
       },
     ).catch((err: unknown) => {
-      stopped = describeError(err);
+      stopped = err instanceof ProviderOutage ? err.message : describeError(err);
       return [];
     });
     const last = attempts.at(-1)?.result;
@@ -443,6 +446,7 @@ async function main(): Promise<number> {
   log("\n| Run id | Task | Model | Result | Checks | Tokens in/out | Seconds |\n|---|---|---|---|---|---|---|");
   for (const r of reports) log(`| ${r.runId} | ${r.task.toUpperCase()} | ${r.model} | ${r.pass ? "PASS" : "FAIL"}${r.providerError ? " (provider error)" : ""} | ${r.checks.map((k) => `${k.id}${k.pass ? "✓" : "✗"}`).join(" ")} | ${r.tokens ? `${r.tokens.input}/${r.tokens.output}` : "n/a"} | ${r.seconds.toFixed(0)} |`);
   if (stopped && /LIMIT/.test(stopped)) return 4;
+  if (stopped && /PROVIDER OUTAGE/.test(stopped)) return 5;
   return reports.every((r) => r.pass) ? 0 : 1;
 }
 

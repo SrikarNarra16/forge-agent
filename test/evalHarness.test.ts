@@ -3,7 +3,7 @@ import { HarnessCommandApproval, harnessAllows } from "../scripts/eval/commands"
 import { assertThrowaway, extrasName } from "../scripts/eval/guard";
 import { checkLimits, totalsOf, type LedgerEntry } from "../scripts/eval/ledger";
 import { formatSummary, summarize, type RunReport } from "../scripts/eval/report";
-import { BACKOFF_MS, classifyFailure, withRetries } from "../scripts/eval/retry";
+import { BACKOFF_MS, OutageGuard, ProviderOutage, classifyFailure, withRetries } from "../scripts/eval/retry";
 import { deriveSignals } from "../scripts/eval/signals";
 import type { TurnView, ToolCallInfo } from "../src/trueforge/events";
 
@@ -46,10 +46,58 @@ describe("cost guard ledger", () => {
   const e = (input: number, output: number): LedgerEntry => ({ runId: "r", task: "b", model: "m", attempt: 1, input, output, at: "" });
   it("sums tokens and attempts and stops at the limits", () => {
     const t = totalsOf([e(1000, 100), e(2000, 200)]);
-    expect(t).toEqual({ attempts: 2, input: 3000, output: 300, total: 3300 });
+    expect(t).toEqual({ attempts: 2, providerFailures: 0, input: 3000, output: 300, total: 3300 });
     expect(checkLimits(t, { tokens: 4_000_000, runs: 40 })).toEqual({ ok: true });
     expect(checkLimits({ ...t, total: 4_000_000 }, { tokens: 4_000_000, runs: 40 })).toMatchObject({ ok: false, reason: expect.stringMatching(/TOKEN LIMIT.*ask/) });
     expect(checkLimits({ ...t, attempts: 40 }, { tokens: 4_000_000, runs: 40 })).toMatchObject({ ok: false, reason: expect.stringMatching(/RUN LIMIT/) });
+  });
+});
+
+describe("provider failures without tokens do not count toward the attempt cap", () => {
+  const e = (input: number, output: number): LedgerEntry => ({ runId: "r", task: "b", model: "m", attempt: 1, input, output, at: "" });
+  it("counts only attempts that used tokens and tracks the others separately", () => {
+    const t = totalsOf([e(0, 0), e(0, 0), e(5000, 100), e(0, 0)]);
+    expect(t).toMatchObject({ attempts: 1, providerFailures: 3, total: 5100 });
+    expect(checkLimits({ ...t, attempts: 39 }, { tokens: 4_000_000, runs: 40 })).toEqual({ ok: true });
+  });
+});
+
+describe("OutageGuard", () => {
+  it("pauses 10 minutes after 3 provider failures in a row and logs it", async () => {
+    const slept: number[] = [];
+    const logs: string[] = [];
+    const g = new OutageGuard({ sleep: (ms) => (slept.push(ms), Promise.resolve()), log: (m) => logs.push(m) });
+    await g.beforeAttempt();
+    g.record(true); g.record(true);
+    await g.beforeAttempt();
+    expect(slept).toEqual([]);
+    g.record(true);
+    await g.beforeAttempt();
+    expect(slept).toEqual([600_000]);
+    expect(logs[0]).toMatch(/PAUSING 10 minutes.*pause 1 of 3/);
+  });
+  it("a success resets the failure and pause counters", async () => {
+    const slept: number[] = [];
+    const g = new OutageGuard({ sleep: (ms) => (slept.push(ms), Promise.resolve()) });
+    for (let i = 0; i < 3; i++) g.record(true);
+    await g.beforeAttempt();
+    g.record(false);
+    for (let i = 0; i < 3; i++) g.record(true);
+    await g.beforeAttempt();
+    expect(slept).toHaveLength(2);
+    for (let round = 0; round < 3; round++) { g.record(false); for (let i = 0; i < 3; i++) g.record(true); await g.beforeAttempt(); }
+    await expect(g.beforeAttempt()).resolves.toBeUndefined(); // reset by the successes: no stop yet
+  });
+  it("stops after 3 pauses in a row once the provider still fails", async () => {
+    const g = new OutageGuard({ sleep: () => Promise.resolve() });
+    for (let pause = 0; pause < 3; pause++) {
+      for (let i = 0; i < 3; i++) g.record(true);
+      await g.beforeAttempt(); // pause
+    }
+    await g.beforeAttempt(); // first attempt after the third pause is allowed
+    g.record(true); // ...and it fails
+    await expect(g.beforeAttempt()).rejects.toBeInstanceOf(ProviderOutage);
+    await expect(g.beforeAttempt()).rejects.toThrow(/PROVIDER OUTAGE/);
   });
 });
 

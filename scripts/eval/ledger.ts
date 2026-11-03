@@ -19,7 +19,10 @@ export interface LedgerEntry {
 }
 
 export interface LedgerTotals {
+  /** Attempts that got a real model answer (used tokens). Provider failures with no tokens do not count. */
   attempts: number;
+  /** Attempts that failed on the provider without using any tokens (logged, not counted against the cap). */
+  providerFailures: number;
   input: number;
   output: number;
   total: number;
@@ -28,7 +31,8 @@ export interface LedgerTotals {
 export function totalsOf(entries: readonly LedgerEntry[]): LedgerTotals {
   const input = entries.reduce((n, e) => n + e.input, 0);
   const output = entries.reduce((n, e) => n + e.output, 0);
-  return { attempts: entries.length, input, output, total: input + output };
+  const real = entries.filter((e) => e.input + e.output > 0);
+  return { attempts: real.length, providerFailures: entries.length - real.length, input, output, total: input + output };
 }
 
 export async function readLedger(file: string): Promise<LedgerEntry[]> {
