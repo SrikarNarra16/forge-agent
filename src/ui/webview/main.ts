@@ -15,6 +15,7 @@ const STATE_LABEL: Record<RunState, string> = {
   awaitingApproval: "Waiting for your approval",
   done: "Done",
   error: "Error",
+  cancelling: "Stopping…",
   cancelled: "Stopped",
 };
 
@@ -86,6 +87,7 @@ function mount(): void {
 
   const elements = new Map<string, HTMLElement>();
   let busy = false;
+  let stopping = false;
   let canUndo = false;
 
   const handlers: RenderHandlers = {
@@ -103,7 +105,7 @@ function mount(): void {
   };
   const refreshControls = (): void => {
     send.disabled = busy;
-    stop.disabled = !busy;
+    stop.disabled = !busy || stopping;
     undo.disabled = busy || !canUndo;
   };
 
@@ -126,7 +128,8 @@ function mount(): void {
   };
 
   const setStatus = (status: StatusInfo): void => {
-    busy = status.state === "running" || status.state === "awaitingApproval";
+    busy = status.state === "running" || status.state === "awaitingApproval" || status.state === "cancelling";
+    stopping = status.state === "cancelling";
     canUndo = status.canUndo === true;
     dot.className = `dot state-${status.state}`;
     const label = status.compacting ? "Compacting context…" : STATE_LABEL[status.state];

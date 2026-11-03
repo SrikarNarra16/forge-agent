@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { IllegalTransitionError, RunStateMachine, type RunState } from "../src/trueforge/runState";
 
-const ALL: RunState[] = ["idle", "running", "awaitingApproval", "done", "error", "cancelled"];
+const ALL: RunState[] = ["idle", "running", "awaitingApproval", "cancelling", "done", "error", "cancelled"];
 const LEGAL: Record<RunState, RunState[]> = {
   idle: ["running"],
-  running: ["awaitingApproval", "done", "error", "cancelled"],
-  awaitingApproval: ["running", "cancelled", "error"],
+  running: ["awaitingApproval", "done", "error", "cancelled", "cancelling"],
+  awaitingApproval: ["running", "cancelled", "error", "cancelling"],
+  cancelling: ["cancelled", "error"],
   done: ["running"],
   error: ["running"],
   cancelled: ["running"],
@@ -18,6 +19,7 @@ function machineAt(state: RunState): RunStateMachine {
     idle: [],
     running: ["running"],
     awaitingApproval: ["running", "awaitingApproval"],
+    cancelling: ["running", "cancelling"],
     done: ["running", "done"],
     error: ["running", "error"],
     cancelled: ["running", "cancelled"],
@@ -50,9 +52,19 @@ describe("RunStateMachine", () => {
     }
   }
 
-  it("is busy exactly while running or awaiting approval", () => {
-    const busy = ALL.filter((s) => machineAt(s).busy);
-    expect(busy).toEqual(["running", "awaitingApproval"]);
+  it("is busy while running, awaiting approval or cancelling; only the first two are stoppable", () => {
+    expect(ALL.filter((s) => machineAt(s).busy)).toEqual(["running", "awaitingApproval", "cancelling"]);
+    expect(ALL.filter((s) => machineAt(s).stoppable)).toEqual(["running", "awaitingApproval"]);
+  });
+
+  it("cancelling is entered from running or awaitingApproval and ends in cancelled (then the next send works)", () => {
+    for (const from of ["running", "awaitingApproval"] as const) {
+      const m = machineAt(from);
+      m.transition("cancelling");
+      m.transition("cancelled");
+      m.transition("running");
+      expect(m.state).toBe("running");
+    }
   });
 
   it("supports the full approval cycle idle -> running -> awaitingApproval -> running -> done", () => {

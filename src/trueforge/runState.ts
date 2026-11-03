@@ -2,15 +2,17 @@
  * Run state machine: the single source of truth for what the agent is doing. The UI renders from it.
  *
  *   idle -> running -> awaitingApproval -> running -> done | error | cancelled
+ *   running | awaitingApproval -> cancelling -> cancelled      (Stop: entered synchronously, no network involved)
  *
  * `done`, `error` and `cancelled` are terminal for a run but behave like `idle` for the next send.
  */
-export type RunState = "idle" | "running" | "awaitingApproval" | "done" | "error" | "cancelled";
+export type RunState = "idle" | "running" | "awaitingApproval" | "cancelling" | "done" | "error" | "cancelled";
 
 const ALLOWED: Readonly<Record<RunState, readonly RunState[]>> = {
   idle: ["running"],
-  running: ["awaitingApproval", "done", "error", "cancelled"],
-  awaitingApproval: ["running", "cancelled", "error"],
+  running: ["awaitingApproval", "done", "error", "cancelled", "cancelling"],
+  awaitingApproval: ["running", "cancelled", "error", "cancelling"],
+  cancelling: ["cancelled", "error"],
   done: ["running"],
   error: ["running"],
   cancelled: ["running"],
@@ -33,8 +35,13 @@ export class RunStateMachine {
     return this.current;
   }
 
-  /** True while a run is in progress (including while it waits for an approval). */
+  /** True while a run is in progress (including waiting for an approval and while it is being cancelled). */
   get busy(): boolean {
+    return this.current === "running" || this.current === "awaitingApproval" || this.current === "cancelling";
+  }
+
+  /** True when Stop can be pressed (not already stopping). */
+  get stoppable(): boolean {
     return this.current === "running" || this.current === "awaitingApproval";
   }
 
