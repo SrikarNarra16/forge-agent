@@ -32,7 +32,7 @@ import { createSdkTurnClient } from "../../src/trueforge/sdkAdapter";
 import { DiskHost } from "../diskHost";
 import { autoPresenter, diskReviewEditor, type AcceptMode } from "./diskEditor";
 import { agentName, assertThrowaway, mcpName, snapshotDiff, type Snapshot } from "./guard";
-import { appendResults, formatSummary, type EvalCheck, type RunReport } from "./report";
+import { appendResults, formatSummary, isProviderError, type EvalCheck, type RunReport } from "./report";
 import { REQUIRED_FILES, changedFiles, formatScore, scoreTaskB } from "./score-task-b";
 import { createWorkspace, pythonEnv, type Workspace } from "./workspace";
 
@@ -260,6 +260,7 @@ async function runOnce(c: RunContext): Promise<RunReport> {
     tokens: usage.length > 0 ? { input: usage.reduce((n, u) => n + u.inputTokens, 0), output: usage.reduce((n, u) => n + (u.outputTokens ?? 0), 0), calls: usage.length } : undefined,
     finalMessage,
     errors,
+    providerError: isProviderError(errors),
     changedFiles: changed,
   };
   log(`    ${report.pass ? "PASS" : "FAIL"} in ${report.seconds.toFixed(0)}s; state ${state}; ${report.modelCalls} model calls; tools ${JSON.stringify(toolCalls)}`);
@@ -322,7 +323,7 @@ async function main(): Promise<number> {
   await appendResults(join(ROOT, "docs", "eval-results.md"), reports);
   log(`\n${formatSummary(reports)}`);
   log("\n| Run id | Task | Model | Result | Checks | Tokens in/out | Seconds |\n|---|---|---|---|---|---|---|");
-  for (const r of reports) log(`| ${r.runId} | ${r.task.toUpperCase()} | ${r.model} | ${r.pass ? "PASS" : "FAIL"} | ${r.checks.map((k) => `${k.id}${k.pass ? "✓" : "✗"}`).join(" ")} | ${r.tokens ? `${r.tokens.input}/${r.tokens.output}` : "n/a"} | ${r.seconds.toFixed(0)} |`);
+  for (const r of reports) log(`| ${r.runId} | ${r.task.toUpperCase()} | ${r.model} | ${r.pass ? "PASS" : "FAIL"}${r.providerError ? " (provider error)" : ""} | ${r.checks.map((k) => `${k.id}${k.pass ? "✓" : "✗"}`).join(" ")} | ${r.tokens ? `${r.tokens.input}/${r.tokens.output}` : "n/a"} | ${r.seconds.toFixed(0)} |`);
   return reports.every((r) => r.pass) ? 0 : 1;
 }
 

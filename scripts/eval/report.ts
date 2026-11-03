@@ -29,10 +29,17 @@ export interface RunReport {
   tokens: { input: number; output: number; calls: number } | undefined;
   finalMessage: string;
   errors: string[];
+  /** The run hit a provider/infrastructure error (5xx, rate limit, client timeout), not an agent mistake. */
+  providerError: boolean;
   changedFiles: string[];
 }
 
 const HEADER = "| Run id | Date | Task | Model | Result | Checks | Tokens (in/out) | Notes |\n|---|---|---|---|---|---|---|---|\n";
+
+/** 5xx / 429 / busy / timeout-cancel messages from the model provider or TrueForge. */
+export function isProviderError(errors: readonly string[]): boolean {
+  return errors.some((e) => /Request failed \((5\d\d|429)\)|too busy|rate limit|client-cancelled|ECONNRESET|ETIMEDOUT/i.test(e));
+}
 
 export function checksCell(checks: readonly EvalCheck[]): string {
   return checks.map((c) => `${c.id}${c.pass ? "✓" : "✗"}`).join(" ");
@@ -47,6 +54,7 @@ export function tableRow(r: RunReport): string {
     tools || "no tools",
     r.task === "b" ? `key files in context ${r.keyFilesInContext.length}/3, read ${r.keyFilesRead.length}/3` : "",
     r.accept !== "all" ? `accept=${r.accept}` : "",
+    r.providerError ? "PROVIDER ERROR" : "",
     ...r.checks.filter((c) => !c.pass).map((c) => `FAIL ${c.id}: ${c.detail.slice(0, 80)}`),
     ...r.errors.slice(0, 1).map((e) => `error: ${e.slice(0, 80)}`),
   ]
@@ -74,6 +82,7 @@ export async function appendResults(file: string, reports: readonly RunReport[])
 export interface Summary {
   runs: number;
   passed: number;
+  providerErrors: number;
   perCheck: Record<string, { passed: number; total: number }>;
 }
 
@@ -86,7 +95,7 @@ export function summarize(reports: readonly RunReport[]): Summary {
       if (c.pass) entry.passed++;
     }
   }
-  return { runs: reports.length, passed: reports.filter((r) => r.pass).length, perCheck };
+  return { runs: reports.length, passed: reports.filter((r) => r.pass).length, providerErrors: reports.filter((r) => r.providerError).length, perCheck };
 }
 
 export function formatSummary(reports: readonly RunReport[]): string {
@@ -96,5 +105,5 @@ export function formatSummary(reports: readonly RunReport[]): string {
   const lines = Object.keys(s.perCheck)
     .sort()
     .map((id) => `  (${id}) ${s.perCheck[id]?.passed}/${s.perCheck[id]?.total}  ${names.get(id) ?? ""}`);
-  return [`Pass rate per check:`, ...lines, `Overall: ${s.passed}/${s.runs} runs passed`].join("\n");
+  return [`Pass rate per check:`, ...lines, `Overall: ${s.passed}/${s.runs} runs passed${s.providerErrors > 0 ? ` (${s.providerErrors} run(s) hit provider errors: 5xx/429/timeouts)` : ""}`].join("\n");
 }
