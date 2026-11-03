@@ -62,3 +62,23 @@ To complete the baseline when DeepSeek is back (the harness now pauses 10 minute
     cd forge-agent && npm run eval -- --task b --model deepseek/flash --runs 5 --timeout 480
 
 then, if at least 4 runs got a real answer, ask me to start the tuning loop.
+| 2026-11-03-96101-r1 | 2026-11-03 | B | deepseek/flash | PASS | a✓ b✓ c✓ | 520045/9990 | 117s; 27 model calls; repo_map×1 search_code×11 read_file×13 run_command×6 propose_edit×6 list_tools×1 call_tool×2; key files in context 3/3, read 3/3; tests yes, deferred yes, scout no; error: Cancelled. Rolled back 4 files from this run: docs/api.rst, docs/cli.rst, tests/ |
+| 2026-11-03-96101-r2 | 2026-11-03 | B | deepseek/flash | PASS | a✓ b✓ c✓ | 272381/6176 | 69s; 18 model calls; get_symbols×1 search_code×10 read_file×12 propose_edit×3 run_command×1; key files in context 3/3, read 3/3; tests yes, deferred no, scout no; error: Cancelled. Rolled back 3 files from this run: docs/cli.rst, tests/test_cli.py, s |
+| 2026-11-03-96101-r3 | 2026-11-03 | B | deepseek/flash | PASS | a✓ b✓ c✓ | n/a | 3s; 1 model calls; no tools; key files in context 3/3, read 0/3; tests no, deferred no, scout no; error: Cancelled. Nothing had been changed. |
+| 2026-11-03-96101-r4 | 2026-11-03 | B | deepseek/flash | PASS | a✓ b✓ c✓ | 14633/633 | 9s; 3 model calls; repo_map×1 search_code×2 read_file×3; key files in context 3/3, read 1/3; tests no, deferred no, scout no; error: Cancelled. Nothing had been changed. |
+| 2026-11-03-96101-r5 | 2026-11-03 | B | deepseek/flash | PASS | a✓ b✓ c✓ | 189071/4227 | 40s; 13 model calls; get_symbols×2 search_code×8 read_file×10 run_command×1 propose_edit×1; key files in context 3/3, read 3/3; tests no, deferred no, scout no; error: Cancelled. Nothing had been changed. |
+
+## Cancel trials (3 Nov 2026): Stop through the real controller at random points
+Command: `npm run eval -- --task b --model deepseek/flash --cancel-at random --runs 5 --timeout 480` (seed 7; stratified cut points; the harness' simulated user takes 4 s per review so cuts can land on an open diff). Everything else is the product pipeline: real `controller.stop()`, registry, command tickets, in-flight apply tracking, rollback with the non-interactive restorer. After each Stop the harness asserts `git status --porcelain` is empty in the temp copy, the state is `cancelled`, and `stop()`/`send()` returned within 1 s; at the end the TrueForge snapshot diff must be empty.
+
+| Trial | Cut | What the agent was doing | Rolled back | Workspace | stop() / send() after click |
+|---|---|---|---|---|---|
+| 1 | 116.5 s | after 40 tool calls (last read_file), several reviews already applied | 4 files (docs/api.rst, docs/cli.rst, tests/test_cli.py, src/flask/cli.py) | clean | 6 ms / 6 ms |
+| 2 | 68 s | after 27 tool calls (last propose_edit) | 3 files (docs/cli.rst, tests/test_cli.py, src/flask/cli.py) | clean | 5 ms / 5 ms |
+| 3 | 2.1 s | before the first tool call | nothing changed | clean | 1 ms / 1 ms |
+| 4 | 8.7 s | after 6 tool calls (last search_code) | nothing changed | clean | 1 ms / 1 ms |
+| 5 | 39.5 s | awaiting approval, a diff open | nothing changed | clean | 2 ms / 2 ms |
+
+Result: **5/5** on all three checks; TrueForge resources identical before/after ("CLEANUP OK"). The state sequence in the log shows `... running > cancelling > cancelled` every time.
+Cost: these 5 trials plus the resume spike used about 1.0M of the cost guard (ledger total now 1,902,214 tokens over 9 counted attempts; provider failures without tokens are logged separately: 7). Limits 4,000,000 tokens / 40 counted attempts.
+Honest limits: 5 trials on one model/task; a cut during the exact milliseconds of an apply was not hit live (covered by the unit tests with a slow, gated apply); the "user edited the file after Forge" case is covered by unit tests and the manual protocol, not by these trials.
