@@ -1,12 +1,13 @@
 /**
  * Name guard for the eval harness: only throwaway TrueForge names of the exact form
- * `forge-eval-<pid>-r<run>-agent` / `forge-eval-<pid>-r<run>-mcp` may ever be created or deleted.
+ * `forge-eval-<pid>-r<run>-agent` / `-mcp` / `-extras` may ever be created or deleted.
  */
-const FORBIDDEN = new Set(["forge-agent", "forge-editor", "forge-inline"]);
-const THROWAWAY = /^forge-eval-\d+-r\d+-(agent|mcp)$/;
+const FORBIDDEN = new Set(["forge-agent", "forge-editor", "forge-editor-extras", "forge-inline"]);
+const THROWAWAY = /^forge-eval-\d+-r\d+-(agent|mcp|extras)$/;
 
 export const agentName = (pid: number, run: number): string => `forge-eval-${pid}-r${run}-agent`;
 export const mcpName = (pid: number, run: number): string => `forge-eval-${pid}-r${run}-mcp`;
+export const extrasName = (pid: number, run: number): string => `forge-eval-${pid}-r${run}-extras`;
 
 export function assertThrowaway(name: string): void {
   if (FORBIDDEN.has(name) || !THROWAWAY.test(name)) throw new Error(`SAFETY: refusing to touch "${name}" (only forge-eval-<pid>-r<run>-agent|mcp names are allowed)`);

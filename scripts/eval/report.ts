@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { classifyFailure } from "./retry";
 
 export interface EvalCheck {
   id: string;
@@ -29,16 +30,24 @@ export interface RunReport {
   tokens: { input: number; output: number; calls: number } | undefined;
   finalMessage: string;
   errors: string[];
-  /** The run hit a provider/infrastructure error (5xx, rate limit, client timeout), not an agent mistake. */
+  /** The FINAL attempt failed on a provider/infrastructure error (5xx, rate limit, timeout), not an agent mistake. */
   providerError: boolean;
+  /** How many attempts this run took (1 = no retry). */
+  attempts: number;
+  /** One entry per attempt: "pass", "agent" (agent failure) or "provider" (provider failure, retried). */
+  attemptKinds: string[];
+  ranTests: boolean;
+  usedDeferredLoading: boolean;
+  usedScout: boolean;
+  /** Every run_command the agent issued with the harness verdict. */
+  commands: Array<{ command: string; approved: boolean; reason?: string }>;
   changedFiles: string[];
 }
 
 const HEADER = "| Run id | Date | Task | Model | Result | Checks | Tokens (in/out) | Notes |\n|---|---|---|---|---|---|---|---|\n";
 
-/** 5xx / 429 / busy / timeout-cancel messages from the model provider or TrueForge. */
 export function isProviderError(errors: readonly string[]): boolean {
-  return errors.some((e) => /Request failed \((5\d\d|429)\)|too busy|rate limit|client-cancelled|ECONNRESET|ETIMEDOUT/i.test(e));
+  return classifyFailure(errors) === "provider";
 }
 
 export function checksCell(checks: readonly EvalCheck[]): string {
@@ -55,6 +64,8 @@ export function tableRow(r: RunReport): string {
     r.task === "b" ? `key files in context ${r.keyFilesInContext.length}/3, read ${r.keyFilesRead.length}/3` : "",
     r.accept !== "all" ? `accept=${r.accept}` : "",
     r.providerError ? "PROVIDER ERROR" : "",
+    r.attempts > 1 ? `${r.attempts} attempts (${r.attemptKinds.join(">")})` : "",
+    r.task === "b" ? `tests ${r.ranTests ? "yes" : "no"}, deferred ${r.usedDeferredLoading ? "yes" : "no"}, scout ${r.usedScout ? "yes" : "no"}` : "",
     ...r.checks.filter((c) => !c.pass).map((c) => `FAIL ${c.id}: ${c.detail.slice(0, 80)}`),
     ...r.errors.slice(0, 1).map((e) => `error: ${e.slice(0, 80)}`),
   ]
@@ -82,28 +93,57 @@ export async function appendResults(file: string, reports: readonly RunReport[])
 export interface Summary {
   runs: number;
   passed: number;
-  providerErrors: number;
+  /** Runs whose final attempt failed on the provider (no usable answer). */
+  providerFailures: number;
+  /** Runs that got a real answer but failed a check. */
+  agentFailures: number;
+  attempts: number;
+  /** Provider failures seen on any attempt, including ones that a retry recovered. */
+  providerAttempts: number;
   perCheck: Record<string, { passed: number; total: number }>;
+  ranTests: number;
+  usedDeferredLoading: number;
+  usedScout: number;
 }
 
 export function summarize(reports: readonly RunReport[]): Summary {
   const perCheck: Summary["perCheck"] = {};
   for (const r of reports) {
+    if (r.providerError) continue; // no usable answer: does not count for or against the agent
     for (const c of r.checks) {
       const entry = (perCheck[c.id] ??= { passed: 0, total: 0 });
       entry.total++;
       if (c.pass) entry.passed++;
     }
   }
-  return { runs: reports.length, passed: reports.filter((r) => r.pass).length, providerErrors: reports.filter((r) => r.providerError).length, perCheck };
+  const answered = reports.filter((r) => !r.providerError);
+  return {
+    runs: reports.length,
+    passed: reports.filter((r) => r.pass).length,
+    providerFailures: reports.filter((r) => r.providerError).length,
+    agentFailures: reports.filter((r) => !r.pass && !r.providerError).length,
+    attempts: reports.reduce((n, r) => n + r.attempts, 0),
+    providerAttempts: reports.reduce((n, r) => n + r.attemptKinds.filter((k) => k === "provider").length, 0),
+    perCheck,
+    ranTests: answered.filter((r) => r.ranTests).length,
+    usedDeferredLoading: answered.filter((r) => r.usedDeferredLoading).length,
+    usedScout: answered.filter((r) => r.usedScout).length,
+  };
 }
 
 export function formatSummary(reports: readonly RunReport[]): string {
   const s = summarize(reports);
   const names = new Map<string, string>();
   for (const r of reports) for (const c of r.checks) names.set(c.id, c.name);
+  const answered = s.runs - s.providerFailures;
   const lines = Object.keys(s.perCheck)
     .sort()
     .map((id) => `  (${id}) ${s.perCheck[id]?.passed}/${s.perCheck[id]?.total}  ${names.get(id) ?? ""}`);
-  return [`Pass rate per check:`, ...lines, `Overall: ${s.passed}/${s.runs} runs passed${s.providerErrors > 0 ? ` (${s.providerErrors} run(s) hit provider errors: 5xx/429/timeouts)` : ""}`].join("\n");
+  return [
+    "Pass rate per check (runs with a real answer only):",
+    ...lines,
+    `Overall: ${s.passed}/${s.runs} runs passed (${s.passed}/${answered} of the runs that got an answer)`,
+    `Failures: ${s.agentFailures} agent, ${s.providerFailures} provider (after retries); ${s.providerAttempts} provider-failed attempt(s) in total over ${s.attempts} attempt(s)`,
+    `Behaviour (answered runs): ran tests ${s.ranTests}/${answered}, used deferred tools ${s.usedDeferredLoading}/${answered}, used a scout ${s.usedScout}/${answered}`,
+  ].join("\n");
 }

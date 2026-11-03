@@ -15,6 +15,7 @@ import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { NodeCommandRunner } from "../../src/host/commandRunner";
 import { ContextIndex } from "../../src/context/indexer";
 import { buildTurnContext } from "../../src/context/injection";
 import { buildInlineMessage, inlineDisplayText, snapshotSelection } from "../../src/inline/message";
@@ -25,16 +26,22 @@ import { startMcpServer } from "../../src/mcp/server";
 import { CheckpointStore } from "../../src/review/checkpoints";
 import { ReviewApprovalHandler } from "../../src/review/reviewHandler";
 import { ReviewTracker } from "../../src/review/tracker";
-import { AgentController, type UiSink } from "../../src/trueforge/agentController";
-import { createClient, describeError, parseAgentFile } from "../../src/trueforge/client";
-import type { TurnView } from "../../src/trueforge/events";
+import { RoutingApprovalHandler } from "../../src/trueforge/routingApprovals";
+import { CommandApprovalHandler } from "../../src/trueforge/commandApprovals";
+import { AgentController, type ApprovalHandler, type TurnClient, type UiSink } from "../../src/trueforge/agentController";
+import { FORGE_EDITOR_SERVER, FORGE_EXTRAS_SERVER, createClient, describeError, parseAgentFile } from "../../src/trueforge/client";
+import type { StreamEvent, TurnView } from "../../src/trueforge/events";
 import { createSdkTurnClient } from "../../src/trueforge/sdkAdapter";
 import { DiskHost } from "../diskHost";
 import { autoPresenter, diskReviewEditor, type AcceptMode } from "./diskEditor";
-import { agentName, assertThrowaway, mcpName, snapshotDiff, type Snapshot } from "./guard";
-import { appendResults, formatSummary, isProviderError, type EvalCheck, type RunReport } from "./report";
+import { HarnessCommandApproval } from "./commands";
+import { agentName, assertThrowaway, extrasName, mcpName, snapshotDiff, type Snapshot } from "./guard";
+import { DEFAULT_RUN_LIMIT, DEFAULT_TOKEN_LIMIT, appendLedger, checkLimits, readLedger, totalsOf } from "./ledger";
+import { classifyFailure, withRetries } from "./retry";
+import { deriveSignals } from "./signals";
+import { appendResults, formatSummary, type EvalCheck, type RunReport } from "./report";
 import { REQUIRED_FILES, changedFiles, formatScore, scoreTaskB } from "./score-task-b";
-import { createWorkspace, pythonEnv, type Workspace } from "./workspace";
+import { FIXTURE_PYTHON, createWorkspace, pythonEnv, type Workspace } from "./workspace";
 
 const exec = promisify(execFile);
 const BASE_URL = process.env["TRUEFORGE_BASE_URL"] ?? "http://localhost:8790";
@@ -69,6 +76,39 @@ class Sink implements UiSink {
   onReset(): void {}
 }
 
+class Capture {
+  readonly lines: string[] = [];
+  private turn = 0;
+  started(input: unknown): number {
+    this.turn++;
+    this.lines.push(JSON.stringify({ turn: this.turn, input }));
+    return this.turn;
+  }
+  event(turn: number, event: unknown): void {
+    this.lines.push(JSON.stringify({ turn, event }));
+  }
+}
+
+function recording(inner: TurnClient, capture: Capture, redact: (s: string) => string): TurnClient {
+  return {
+    createSession: (spec) => inner.createSession(spec),
+    cancel: (id) => inner.cancel(id),
+    async createTurnStream(sessionId, input) {
+      const turn = capture.started(input);
+      const stream = await inner.createTurnStream(sessionId, input);
+      return (async function* () {
+        for await (const event of stream as AsyncIterable<StreamEvent>) {
+          capture.lines.push(redact(JSON.stringify({ turn, event })));
+          yield event;
+        }
+      })();
+    },
+  };
+}
+
+/** Rejects anything gated that the harness does not know (nothing should reach it). */
+const denyUnknown: ApprovalHandler = { decide: () => Promise.resolve({ status: "deny", reason: "The eval harness does not approve this tool." }) };
+
 function selectFunction(text: string): { startLine: number; endLine: number } {
   const lines = text.split("\n");
   const def = lines.findIndex((l) => l.startsWith("def get_debug_flag"));
@@ -90,18 +130,22 @@ interface RunContext {
   cleanups: Set<() => Promise<void>>;
 }
 
-async function runOnce(c: RunContext): Promise<RunReport> {
+async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
   const { client, log, task, runNumber } = c;
   const pid = process.pid;
   const agent = agentName(pid, runNumber);
   const mcp = mcpName(pid, runNumber);
-  const runId = `${new Date().toISOString().slice(0, 10)}-${pid}-r${runNumber}`;
+  const extras = extrasName(pid, runNumber);
+  const runId = `${new Date().toISOString().slice(0, 10)}-${pid}-r${runNumber}${attempt > 1 ? `-a${attempt}` : ""}`;
   const started = Date.now();
   const errors: string[] = [];
   let ws: Workspace | undefined;
   let server: Awaited<ReturnType<typeof startMcpServer>> | undefined;
   let agentCreated = false;
   let mcpRegistered = false;
+  let extrasRegistered = false;
+  const capture = new Capture();
+  const harnessCommands = new HarnessCommandApproval();
   const sessions: string[] = [];
   let cleaned = false;
 
@@ -118,6 +162,10 @@ async function runOnce(c: RunContext): Promise<RunReport> {
     if (mcpRegistered) {
       assertThrowaway(mcp);
       await client.settings.mcpServers.delete(mcp).catch((e: unknown) => errors.push(`cleanup mcp: ${describeError(e)}`));
+    }
+    if (extrasRegistered) {
+      assertThrowaway(extras);
+      await client.settings.mcpServers.delete(extras).catch((e: unknown) => errors.push(`cleanup extras: ${describeError(e)}`));
     }
     await server?.dispose();
     await ws?.dispose();
@@ -146,7 +194,10 @@ async function runOnce(c: RunContext): Promise<RunReport> {
     events.onContextRead((e) => reads.push(e));
     const index = new ContextIndex();
     await index.build(host);
-    const handler = new ReviewApprovalHandler({
+    const venvBin = join(FIXTURE_PYTHON, "..");
+    // The product mechanism: forge.commandPrefix. It makes `pytest`/`flask` resolve to the fixture venv and the copy's src/.
+    const runner = new NodeCommandRunner({ getPrefix: () => `export PATH='${venvBin}':"$PATH" PYTHONPATH='${join(ws?.root ?? "", "src")}' PYTHONDONTWRITEBYTECODE=1 &&` });
+    const reviewHandler = new ReviewApprovalHandler({
       editor: diskReviewEditor(ws.root, checkpoints),
       presenter: autoPresenter(c.accept),
       decisions,
@@ -154,7 +205,15 @@ async function runOnce(c: RunContext): Promise<RunReport> {
       getRunId: () => `eval-${runId}`,
     });
     const token = generateToken();
-    server = await startMcpServer({ token, host, events, decisions, index });
+    server = await startMcpServer({ token, host, events, decisions, index, commands: runner, editor: { reveal: () => Promise.resolve() } });
+    const handler = new RoutingApprovalHandler(
+      new Map<string, ApprovalHandler>([
+        ["propose_edit", reviewHandler],
+        ["create_file", reviewHandler],
+        ["run_command", new CommandApprovalHandler({ inner: harnessCommands, getRunId: () => `eval-${runId}`, getRoot: () => host.rootPath() })],
+      ]),
+      denyUnknown,
+    );
 
     const agentFile = parseAgentFile(JSON.parse(await readFile(join(ROOT, "agents", task === "a" ? "forge-inline.json" : "forge-agent.json"), "utf8")) as unknown);
     if (c.model && !(await client.models.list()).data.some((m) => m.name === c.model)) throw new Error(`model ${c.model} is not configured in TrueForge`);
@@ -164,6 +223,13 @@ async function runOnce(c: RunContext): Promise<RunReport> {
     await client.settings.mcpServers.createOrUpdate({
       manifest: { type: "remote", name: mcp, url: server.url, description: "Throwaway eval MCP server", auth: { type: "header", headers: { Authorization: `Bearer ${token}` } } },
     });
+    if ((agentFile.spec.mcpServers ?? []).some((m) => m.name === FORGE_EXTRAS_SERVER)) {
+      assertThrowaway(extras);
+      extrasRegistered = true;
+      await client.settings.mcpServers.createOrUpdate({
+        manifest: { type: "remote", name: extras, url: server.extrasUrl, description: "Throwaway eval extras server", auth: { type: "header", headers: { Authorization: `Bearer ${token}` } } },
+      });
+    }
     assertThrowaway(agent);
     agentCreated = true;
     await client.agents.create({
@@ -172,12 +238,13 @@ async function runOnce(c: RunContext): Promise<RunReport> {
       manifest: {
         ...agentFile.spec,
         model: { ...agentFile.spec.model, name: model },
-        mcpServers: (agentFile.spec.mcpServers ?? []).map((s) => ({ ...s, name: mcp })),
+        mcpServers: (agentFile.spec.mcpServers ?? []).map((s) => ({ ...s, name: s.name === FORGE_EXTRAS_SERVER ? extras : s.name === FORGE_EDITOR_SERVER ? mcp : s.name })),
       },
     });
 
     const sink = new Sink();
-    const controller = new AgentController({ client: createSdkTurnClient(() => client), agentName: agent, ui: sink, approvals: handler });
+    const redact = (t: string): string => t.split(token).join("<token>");
+    const controller = new AgentController({ client: recording(createSdkTurnClient(() => client), capture, redact), agentName: agent, ui: sink, approvals: handler });
     let sendText: string;
     let display: string;
     let options: Parameters<AgentController["send"]>[1];
@@ -260,12 +327,19 @@ async function runOnce(c: RunContext): Promise<RunReport> {
     tokens: usage.length > 0 ? { input: usage.reduce((n, u) => n + u.inputTokens, 0), output: usage.reduce((n, u) => n + (u.outputTokens ?? 0), 0), calls: usage.length } : undefined,
     finalMessage,
     errors,
-    providerError: isProviderError(errors),
+    providerError: !(checks.length > 0 && checks.every((k) => k.pass)) && classifyFailure(errors) === "provider",
+    attempts: attempt,
+    attemptKinds: [],
+    ...deriveSignals(view),
+    commands: harnessCommands.records,
     changedFiles: changed,
   };
   log(`    ${report.pass ? "PASS" : "FAIL"} in ${report.seconds.toFixed(0)}s; state ${state}; ${report.modelCalls} model calls; tools ${JSON.stringify(toolCalls)}`);
   log(`    files read: ${filesRead.join(", ") || "(none)"}`);
   if (task === "b") log(`    key files in context: ${keyFilesInContext.length}/3; read by the agent: ${report.keyFilesRead.length}/3`);
+  if (task === "b") log(`    behaviour: ran tests ${report.ranTests ? "yes" : "no"}, deferred loading ${report.usedDeferredLoading ? "yes" : "no"}, scout ${report.usedScout ? "yes" : "no"}; commands: ${report.commands.map((k) => `${k.approved ? "✓" : "✗"} ${k.command.slice(0, 70)}`).join(" | ") || "none"}`);
+  await mkdir(join(ROOT, "eval-output"), { recursive: true });
+  await writeFile(join(ROOT, "eval-output", `${runId}.events.jsonl`), `${capture.lines.join("\n")}\n`, "utf8");
   log(`    tokens: ${report.tokens ? `${report.tokens.input} in / ${report.tokens.output} out over ${report.tokens.calls} calls` : "not reported"}`);
   log(`    agent said: ${JSON.stringify(finalMessage.slice(0, 240))}`);
   if (errors.length > 0) log(`    errors: ${errors.map((e) => e.slice(0, 200)).join(" | ")}`);
@@ -306,8 +380,52 @@ async function main(): Promise<number> {
   process.once("uncaughtException", (e) => abort(`uncaught exception: ${describeError(e)}`));
   process.once("unhandledRejection", (e) => abort(`unhandled rejection: ${describeError(e)}`));
 
+  const ledgerFile = join(ROOT, "eval-output", "ledger.jsonl");
+  const limits = { tokens: Number(arg("--token-limit", String(DEFAULT_TOKEN_LIMIT))), runs: Number(arg("--run-limit", String(DEFAULT_RUN_LIMIT))) };
+  const startTotals = totalsOf(await readLedger(ledgerFile));
+  log(`Cost guard: ${startTotals.attempts} attempt(s) and ${startTotals.total.toLocaleString("en-US")} tokens used so far (limits: ${limits.runs} attempts, ${limits.tokens.toLocaleString("en-US")} tokens)`);
+
+  const initial = checkLimits(startTotals, limits);
+  if (!initial.ok) {
+    console.error(initial.reason);
+    return 4;
+  }
+
   const reports: RunReport[] = [];
-  for (let n = 1; n <= runs; n++) reports.push(await runOnce({ client, task, model, accept, timeoutSeconds, runNumber: n, log, cleanups }));
+  let stopped: string | undefined;
+  for (let n = 1; n <= runs && stopped === undefined; n++) {
+    const attempts = await withRetries(
+      (attempt) => runOnce({ client, task, model, accept, timeoutSeconds, runNumber: n, log, cleanups }, attempt).then(async (report) => {
+        const entry = { runId: report.runId, task, model: report.model, attempt, input: report.tokens?.input ?? 0, output: report.tokens?.output ?? 0, at: new Date().toISOString() };
+        await appendLedger(ledgerFile, entry);
+        const totals = totalsOf(await readLedger(ledgerFile));
+        log(`    cost guard: running total ${totals.total.toLocaleString("en-US")} tokens (${totals.input.toLocaleString("en-US")} in / ${totals.output.toLocaleString("en-US")} out) over ${totals.attempts} attempt(s)`);
+        return report;
+      }),
+      {
+        retryable: async (r) => {
+          if (r.pass || !r.providerError) return false;
+          const limit = checkLimits(totalsOf(await readLedger(ledgerFile)), limits);
+          if (!limit.ok) return false;
+          log("    provider failure: retrying after backoff (10 s, then 30 s)");
+          return true;
+        },
+      },
+    ).catch((err: unknown) => {
+      stopped = describeError(err);
+      return [];
+    });
+    const last = attempts.at(-1)?.result;
+    if (last) {
+      const kinds = attempts.map((a) => (a.result.pass ? "pass" : a.result.providerError ? "provider" : "agent"));
+      reports.push({ ...last, attempts: attempts.length, attemptKinds: kinds });
+    }
+    const check = checkLimits(totalsOf(await readLedger(ledgerFile)), limits);
+    if (!check.ok) stopped = check.reason;
+  }
+  if (stopped) log(`\nSTOPPED EARLY: ${stopped}`);
+  const finalTotals = totalsOf(await readLedger(ledgerFile));
+  log(`Cost guard total: ${finalTotals.total.toLocaleString("en-US")} tokens (${finalTotals.input.toLocaleString("en-US")} in / ${finalTotals.output.toLocaleString("en-US")} out) over ${finalTotals.attempts} attempt(s)`);
 
   const after = await snapshot();
   log(`\nTrueForge after:  agents=${JSON.stringify(after.agents)} mcp=${JSON.stringify(after.mcp)}`);
@@ -324,6 +442,7 @@ async function main(): Promise<number> {
   log(`\n${formatSummary(reports)}`);
   log("\n| Run id | Task | Model | Result | Checks | Tokens in/out | Seconds |\n|---|---|---|---|---|---|---|");
   for (const r of reports) log(`| ${r.runId} | ${r.task.toUpperCase()} | ${r.model} | ${r.pass ? "PASS" : "FAIL"}${r.providerError ? " (provider error)" : ""} | ${r.checks.map((k) => `${k.id}${k.pass ? "✓" : "✗"}`).join(" ")} | ${r.tokens ? `${r.tokens.input}/${r.tokens.output}` : "n/a"} | ${r.seconds.toFixed(0)} |`);
+  if (stopped && /LIMIT/.test(stopped)) return 4;
   return reports.every((r) => r.pass) ? 0 : 1;
 }
 
