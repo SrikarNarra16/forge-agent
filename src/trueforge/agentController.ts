@@ -381,7 +381,7 @@ export class AgentController {
   }
 
   private async cancelRun(runId: string | undefined, wasRunning: boolean): Promise<void> {
-    const { cancel, ui } = this.deps;
+    const { cancel, log, ui } = this.deps;
     await Promise.resolve(); // let the "Stopping…" state reach the UI before any heavier work starts
     const session = this.ctx?.session;
     if (session && wasRunning) this.fireCancel(session.id, "Stop");
@@ -584,7 +584,6 @@ export class AgentController {
    * real reason. Every attempt is logged.
    */
   private async consumeRound(stream: AsyncIterable<StreamEvent>, reducer: TurnReducer): Promise<void> {
-    const { log } = this.deps;
     let seen = 0;
     let turnId: string | undefined;
     const now = this.deps.chain?.now ?? Date.now;
