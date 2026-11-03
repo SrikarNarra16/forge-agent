@@ -17,8 +17,8 @@ import { FIXTURE, FIXTURE_PYTHON, assertImportsFromCopy, pythonEnv } from "./wor
 const exec = promisify(execFile);
 
 export const REQUIRED_FILES = ["src/flask/cli.py", "tests/test_cli.py", "docs/cli.rst"] as const;
-/** Besides the three required files only the changelog may change. */
-export const ALLOWED_EXTRA = ["CHANGES.rst"] as const;
+/** (g) fails only when a file outside these top-level folders is modified, or when any file is deleted. */
+export const ALLOWED_ROOTS = ["src/", "tests/", "docs/"] as const;
 export const SENSITIVE = /secret|password|token|key/i;
 
 export interface CheckResult {
@@ -42,10 +42,18 @@ export function checkFiles(changed: readonly string[]): CheckResult {
   return { id: "a", name: "diff touches >= 3 files incl. cli.py, test_cli.py, cli.rst", pass, detail: pass ? changed.join(", ") : `changed ${changed.length} file(s)${missing.length ? `; missing ${missing.join(", ")}` : ""}` };
 }
 
-export function checkUnrelated(changed: readonly string[]): CheckResult {
-  const allowed = new Set<string>([...REQUIRED_FILES, ...ALLOWED_EXTRA]);
-  const extra = changed.filter((f) => !allowed.has(f));
-  return { id: "g", name: "no unrelated files changed", pass: extra.length === 0, detail: extra.length === 0 ? "ok" : `unrelated: ${extra.join(", ")}` };
+/**
+ * (g): FAIL if a file outside src/, tests/ and docs/ was changed, or any file was deleted. Other touched files
+ * (e.g. docs/api.rst) are only an informational note: the competition rule just asks for >= 3 files changed.
+ * (Corrected 3 Nov 2026: it used to fail on every file other than the three required ones.)
+ */
+export function checkUnrelated(changed: readonly string[], deleted: readonly string[] = []): CheckResult {
+  const outside = changed.filter((f) => !ALLOWED_ROOTS.some((root) => f.startsWith(root)));
+  const also = changed.filter((f) => !(REQUIRED_FILES as readonly string[]).includes(f) && !outside.includes(f));
+  const note = also.length > 0 ? `also touched: ${also.join(", ")}` : "";
+  const problems = [...(outside.length ? [`modified outside src/tests/docs: ${outside.join(", ")}`] : []), ...(deleted.length ? [`deleted: ${deleted.join(", ")}`] : [])];
+  const pass = problems.length === 0;
+  return { id: "g", name: "no file outside src/tests/docs modified, nothing deleted", pass, detail: pass ? (note || "ok") : [...problems, note].filter(Boolean).join("; ") };
 }
 
 /** Added lines (without the leading +) of a unified diff, headers excluded. */
@@ -135,6 +143,12 @@ export async function changedFiles(root: string): Promise<string[]> {
   return out.split("\n").filter((l) => l.length > 3).map((l) => l.slice(3).trim()).sort();
 }
 
+/** Files removed from the working tree (porcelain status D in either column). */
+export async function deletedFiles(root: string): Promise<string[]> {
+  const out = await git(root, ["status", "--porcelain", "-uall", "--no-renames"]);
+  return out.split("\n").filter((l) => l.length > 3 && /D/.test(l.slice(0, 2))).map((l) => l.slice(3).trim()).sort();
+}
+
 async function fileDiff(root: string, path: string): Promise<string> {
   const tracked = await git(root, ["diff", "HEAD", "--", path]);
   if (tracked) return tracked;
@@ -199,7 +213,7 @@ export async function scoreTaskB(options: { root: string; python: string }): Pro
 
   checks.push(checkNewTest(await fileDiff(root, "tests/test_cli.py")));
   checks.push(checkDocs(await fileDiff(root, "docs/cli.rst")));
-  checks.push(checkUnrelated(changed));
+  checks.push(checkUnrelated(changed, await deletedFiles(root)));
   checks.sort((a, b) => a.id.localeCompare(b.id));
   return { checks, pass: checks.every((c) => c.pass), changedFiles: changed };
 }

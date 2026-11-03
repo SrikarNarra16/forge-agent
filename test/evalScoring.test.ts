@@ -83,8 +83,15 @@ describe("scorer building blocks", () => {
     expect(checkFiles(three).pass).toBe(true);
     expect(checkFiles(["src/flask/cli.py", "tests/test_cli.py"]).pass).toBe(false);
     expect(checkFiles([...three.slice(1), "README.md"]).pass).toBe(false);
-    expect(checkUnrelated([...three, "CHANGES.rst"]).pass).toBe(true);
-    expect(checkUnrelated([...three, "src/flask/app.py"]).detail).toMatch(/src\/flask\/app\.py/);
+    expect(checkUnrelated(three)).toMatchObject({ pass: true, detail: "ok" });
+    // corrected (g): an extra file under src/ tests/ docs/ passes and is only a note
+    expect(checkUnrelated([...three, "docs/api.rst"])).toMatchObject({ pass: true, detail: "also touched: docs/api.rst" });
+    expect(checkUnrelated([...three, "src/flask/app.py", "tests/test_basic.py"])).toMatchObject({ pass: true });
+    // ...but a modified file outside those folders fails, as does any deletion
+    expect(checkUnrelated([...three, "CHANGES.rst"])).toMatchObject({ pass: false });
+    expect(checkUnrelated([...three, "pyproject.toml"]).detail).toMatch(/modified outside src\/tests\/docs: pyproject\.toml/);
+    expect(checkUnrelated(three, ["tests/test_old.py"])).toMatchObject({ pass: false, detail: "deleted: tests/test_old.py" });
+    expect(checkUnrelated([...three, "docs/api.rst", "setup.cfg"]).detail).toMatch(/setup\.cfg.*also touched: docs\/api\.rst/);
   });
   it("checkNewTest / checkDocs read added lines only", () => {
     expect(checkNewTest("+def test_config_command(runner):\n+    runner.invoke(cli, ['config'])\n").pass).toBe(true);
