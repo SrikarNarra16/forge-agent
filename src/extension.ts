@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import { NodeCommandRunner } from "./host/commandRunner";
+import { TerminalOutput } from "./host/terminalOutput";
+import { CommandApprovalHandler } from "./trueforge/commandApprovals";
 import { ContextService } from "./host/contextWiring";
 import { buildTurnContext } from "./context/injection";
 import { describeUsage } from "./context/usageLog";
@@ -9,7 +12,7 @@ import { generateToken } from "./mcp/auth";
 import { DecisionStore } from "./mcp/decisions";
 import { McpEvents } from "./mcp/events";
 import { startMcpServer, type McpServerHandle } from "./mcp/server";
-import { AgentController } from "./trueforge/agentController";
+import { AgentController, type ApprovalHandler } from "./trueforge/agentController";
 import { Bootstrapper } from "./trueforge/bootstrap";
 import { FORGE_AGENT_NAME, createClient } from "./trueforge/client";
 import { preflight } from "./trueforge/preflight";
@@ -75,7 +78,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const contextService = new ContextService(host, log);
   context.subscriptions.push(contextService);
   contextService.rebuild(); // background; search_code / repo_map scan files until the index is ready
-  const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, log: (m) => log.info(m) });
+  const terminal = new TerminalOutput();
+  context.subscriptions.push(terminal);
+  const commands = new NodeCommandRunner({ getPrefix: () => vscode.workspace.getConfiguration("forge").get<string>("commandPrefix", "") });
+  const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, log: (m) => log.info(m) });
   mcpStarting = mcp;
   mcp.catch((err: unknown) => log.error("MCP server failed to start", err));
   const getClient = () => createClient(status.baseUrl);
@@ -91,9 +97,10 @@ export function activate(context: vscode.ExtensionContext): void {
     agentName: FORGE_AGENT_NAME,
     ui: new CompositeUi([runScope, panel, new ActivityLog(log, () => status.baseUrl)]),
     approvals: new RoutingApprovalHandler(
-      new Map([
+      new Map<string, ApprovalHandler>([
         ["propose_edit", reviewHandler],
         ["create_file", reviewHandler],
+        ["run_command", new CommandApprovalHandler({ inner: panel, getRunId: () => runScope.runId, getRoot: () => host.rootPath(), log: (m) => log.info(m) })],
       ]),
       panel,
     ),

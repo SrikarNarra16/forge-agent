@@ -204,6 +204,11 @@
           "default": 6000,
           "description": "Token budget for automatically injected context."
         },
+        "forge.commandPrefix": {
+          "type": "string",
+          "default": "",
+          "description": "Shell prefix run before every command the agent runs, e.g. 'source .venv/bin/activate &&' so pytest finds your virtual environment."
+        },
         "forge.rollbackOnCancel": {
           "type": "boolean",
           "default": true,

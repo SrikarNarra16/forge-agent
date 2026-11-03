@@ -60,6 +60,8 @@ export type ChatItem =
       durationMs?: number;
       subagent?: string;
       approval?: ApprovalState;
+      /** run_command: the exact command, shown in a code block on the approval card. */
+      command?: string;
       /** Present for propose_edit / create_file: the card shows "Review diff" instead of Allow/Deny. */
       review?: ReviewItemInfo;
     }
@@ -92,7 +94,7 @@ export type WebToExt =
   | { type: "newChat" }
   | { type: "undoRun" }
   | { type: "openReview"; callId: string }
-  | { type: "approval"; callId: string; decision: "allow" | "deny"; reason?: string };
+  | { type: "approval"; callId: string; decision: "allow" | "deny"; reason?: string; allowThisRun?: boolean };
 
 const MAX_TEXT = 50_000;
 const MAX_ID = 300;
@@ -147,11 +149,12 @@ export function parseWebMessage(data: unknown): WebToExt | undefined {
       return { type: "mentionQuery", id, kind, query };
     }
     case "approval": {
-      const { callId, decision, reason } = data;
+      const { callId, decision, reason, allowThisRun } = data;
+      if (allowThisRun !== undefined && typeof allowThisRun !== "boolean") return undefined;
       if (typeof callId !== "string" || callId === "" || callId.length > MAX_ID) return undefined;
       if (decision !== "allow" && decision !== "deny") return undefined;
       if (reason !== undefined && (typeof reason !== "string" || reason.length > MAX_REASON)) return undefined;
-      return { type: "approval", callId, decision, ...(reason !== undefined ? { reason } : {}) };
+      return { type: "approval", callId, decision, ...(reason !== undefined ? { reason } : {}), ...(allowThisRun === true ? { allowThisRun } : {}) };
     }
     default:
       return undefined;

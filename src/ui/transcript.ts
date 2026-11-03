@@ -1,3 +1,4 @@
+import { commandOf } from "../trueforge/commandApprovals";
 import type { ReducerChange, ThreadInfo, ToolCallInfo, TurnView } from "../trueforge/events";
 import type { ReviewState as TrackerReviewState } from "../review/tracker";
 import type { ApprovalState, ChatItem, ReviewItemInfo, ReviewState, ToolStatus } from "./protocol";
@@ -153,6 +154,7 @@ export class Transcript {
       ...(subagent ? { subagent } : {}),
       ...(approval ? { approval } : {}),
       ...(review ? { review } : {}),
+      ...(call.name === "run_command" && commandOf(call.args) !== undefined ? { command: commandOf(call.args) as string } : {}),
     };
   }
 }

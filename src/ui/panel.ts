@@ -240,12 +240,12 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
         this.handlers?.openReview(message.callId);
         break;
       case "approval":
-        this.resolveApproval(message.callId, message.decision, message.reason);
+        this.resolveApproval(message.callId, message.decision, message.reason, message.allowThisRun === true);
         break;
     }
   }
 
-  private resolveApproval(callId: string, decision: "allow" | "deny", reason: string | undefined): void {
+  private resolveApproval(callId: string, decision: "allow" | "deny", reason: string | undefined, allowThisRun = false): void {
     const allowed = decision === "allow";
     if (this.testCards.has(callId)) {
       this.testCards.delete(callId);
@@ -262,7 +262,7 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
     }
     const item = this.transcript.setApproval(callId, allowed ? "allowed" : "denied"); // optimistic; the controller confirms
     if (item) this.batcher.push(item);
-    pending.resolve(allowed ? { status: "allow" } : { status: "deny", reason: reason || DEFAULT_DENY_REASON });
+    pending.resolve(allowed ? { status: "allow", ...(allowThisRun ? { remember: true } : {}) } : { status: "deny", reason: reason || DEFAULT_DENY_REASON });
   }
 
   private post(message: ExtToWeb): void {

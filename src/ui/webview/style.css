@@ -132,3 +132,6 @@ details.context > summary { cursor: pointer; display: flex; gap: 8px; align-item
 .suggestions li { display: flex; gap: 8px; padding: 2px 8px; cursor: pointer; font-family: var(--vscode-editor-font-family); }
 .suggestions li.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 .suggestions .detail { margin-left: auto; font-size: 0.85em; opacity: 0.7; }
+
+pre.command { margin: 2px 0 6px; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 3px; background: var(--vscode-textCodeBlock-background); font-family: var(--vscode-editor-font-family); }
+.run-allow { display: block; margin: 4px 0; font-size: 0.9em; }

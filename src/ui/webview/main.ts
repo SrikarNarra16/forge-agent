@@ -89,7 +89,7 @@ function mount(): void {
   let canUndo = false;
 
   const handlers: RenderHandlers = {
-    onApproval: (callId, decision, reason) => post({ type: "approval", callId, decision, ...(reason ? { reason } : {}) }),
+    onApproval: (callId, decision, reason, allowThisRun) => post({ type: "approval", callId, decision, ...(reason ? { reason } : {}), ...(allowThisRun ? { allowThisRun } : {}) }),
     onOpenReview: (callId) => post({ type: "openReview", callId }),
   };
 

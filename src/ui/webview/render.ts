@@ -1,5 +1,5 @@
 import type { ChatItem, ReviewItemInfo, ReviewQueueEntry } from "../protocol";
-import { reviewHeader, toolCardModel } from "./format";
+import { commandCardModel, reviewHeader, toolCardModel } from "./format";
 import { parseMarkdown, type Block, type Inline } from "./markdown";
 
 /**
@@ -8,7 +8,7 @@ import { parseMarkdown, type Block, type Inline } from "./markdown";
  */
 
 export interface RenderHandlers {
-  onApproval(callId: string, decision: "allow" | "deny", reason?: string): void;
+  onApproval(callId: string, decision: "allow" | "deny", reason?: string, allowThisRun?: boolean): void;
   onOpenReview(callId: string): void;
 }
 
@@ -94,7 +94,12 @@ function renderTool(item: Extract<ChatItem, { kind: "tool" }>, handlers: RenderH
   details.appendChild(summary);
 
   const body = el("div", "tool-body");
-  if (model.inlineArgs !== undefined) {
+  const command = commandCardModel(item);
+  if (command) {
+    body.appendChild(el("div", "label", "Command"));
+    body.appendChild(el("pre", "command", command.command));
+  }
+  if (model.inlineArgs !== undefined && !command) {
     body.appendChild(el("div", "label", "Arguments"));
     body.appendChild(el("pre", "args", model.inlineArgs));
   }
@@ -112,9 +117,9 @@ function renderTool(item: Extract<ChatItem, { kind: "tool" }>, handlers: RenderH
       body.appendChild(details);
     }
   }
-  else if (item.approval === "pending") body.appendChild(renderApprovalRow(item.id, handlers));
-  else if (item.approval === "allowed") body.appendChild(el("div", "approval-decided allowed", "You allowed this call."));
-  else if (item.approval === "denied") body.appendChild(el("div", "approval-decided denied", "You denied this call."));
+  else if (item.approval === "pending") body.appendChild(renderApprovalRow(item.id, handlers, command?.offerRunAllow === true));
+  else if (item.approval === "allowed") body.appendChild(el("div", "approval-decided allowed", command?.decided ?? "You allowed this call."));
+  else if (item.approval === "denied") body.appendChild(el("div", "approval-decided denied", command?.decided ?? "You denied this call."));
   details.appendChild(body);
   return details;
 }
@@ -181,24 +186,29 @@ export function renderReviewQueue(entries: readonly ReviewQueueEntry[], handlers
   return box;
 }
 
-function renderApprovalRow(callId: string, handlers: RenderHandlers): HTMLElement {
+function renderApprovalRow(callId: string, handlers: RenderHandlers, offerRunAllow = false): HTMLElement {
   const row = el("div", "approval");
   row.appendChild(el("div", "approval-title", "Allow this tool call?"));
   const reason = el("input", "reason");
   reason.type = "text";
   reason.placeholder = "Reason if you deny (optional)";
   reason.maxLength = 500;
+  const runAllow = el("input");
+  runAllow.type = "checkbox";
+  const runAllowLabel = el("label", "run-allow");
+  runAllowLabel.append(runAllow, document.createTextNode(" Allow this exact command for this run"));
   const allow = el("button", "primary", "Allow");
   const deny = el("button", "secondary", "Deny");
   const decide = (decision: "allow" | "deny"): void => {
     allow.disabled = true;
     deny.disabled = true;
-    handlers.onApproval(callId, decision, decision === "deny" ? reason.value.trim() || undefined : undefined);
+    handlers.onApproval(callId, decision, decision === "deny" ? reason.value.trim() || undefined : undefined, decision === "allow" && runAllow.checked ? true : undefined);
   };
   allow.addEventListener("click", () => decide("allow"));
   deny.addEventListener("click", () => decide("deny"));
   const buttons = el("div", "approval-buttons");
   buttons.append(allow, deny);
+  if (offerRunAllow) row.appendChild(runAllowLabel);
   row.append(reason, buttons);
   return row;
 }

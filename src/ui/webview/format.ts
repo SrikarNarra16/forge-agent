@@ -34,3 +34,21 @@ export function toolCardModel(item: ToolItem): ToolCardModel {
   }
   return { headline: item.argsSummary, inlineArgs: hasArgs ? item.args : undefined, detailsArgs: undefined };
 }
+
+export interface CommandCardModel {
+  command: string;
+  /** Show the "Allow this exact command for this run" checkbox (only while the approval is pending). */
+  offerRunAllow: boolean;
+  /** One-line note under the code block once decided. */
+  decided: string | undefined;
+}
+
+/** run_command cards show the exact command in a code block instead of JSON arguments. */
+export function commandCardModel(item: ToolItem): CommandCardModel | undefined {
+  if (item.name !== "run_command" || item.command === undefined) return undefined;
+  return {
+    command: item.command,
+    offerRunAllow: item.approval === "pending",
+    decided: item.approval === "allowed" ? "You allowed this command." : item.approval === "denied" ? "You denied this command." : undefined,
+  };
+}

@@ -14,7 +14,7 @@ import { RunStateMachine, type RunState } from "./runState";
  * The run state machine is the single source of truth for the UI.
  */
 
-export type ApprovalDecision = { status: "allow" } | { status: "deny"; reason: string };
+export type ApprovalDecision = { status: "allow"; /** Remember this exact command for the run (run_command cards). */ remember?: boolean } | { status: "deny"; reason: string };
 
 export interface PendingToolCall {
   id: string;
