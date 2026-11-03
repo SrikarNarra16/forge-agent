@@ -1,3 +1,4 @@
+import type { RunRegistry } from "./runRegistry";
 import type { TrueForgeApi } from "@truefoundry/trueforge-sdk";
 import { describeError } from "./client";
 import { TurnReducer, type ReducerChange, type StreamEvent, type TurnView } from "./events";
@@ -45,7 +46,7 @@ export interface SessionSpec {
 
 export interface TurnClient {
   createSession(spec: SessionSpec): Promise<{ id: string }>;
-  createTurnStream(sessionId: string, input: TurnInput[]): Promise<AsyncIterable<StreamEvent>>;
+  createTurnStream(sessionId: string, input: TurnInput[], options?: { signal?: AbortSignal }): Promise<AsyncIterable<StreamEvent>>;
   cancel(sessionId: string): Promise<void>;
 }
 
@@ -87,6 +88,34 @@ export interface ControllerDeps {
   afterPause?: AfterPausePolicy;
   now?: () => Date;
   log?: (message: string) => void;
+  /** Id of the current run (RunScope mints it on each user message); needed for rollback. */
+  getRunId?: () => string;
+  /** Shared with the handlers and tools: once a run is cancelled nothing may act for it. */
+  registry?: RunRegistry;
+  /** What Stop does besides the state change; every part is optional so tests and the eval harness can inject fakes. */
+  cancel?: CancelDeps;
+}
+
+export interface RollbackSummary {
+  restored: string[];
+  /** Left alone because the user changed them after Forge wrote them. */
+  skipped: string[];
+  failed: Array<{ path: string; error: string }>;
+}
+
+export interface CancelDeps {
+  /** Synchronous, cheap: kill running commands, drop pending decisions and tickets, abort in-flight tool work. */
+  cancelWork?: () => void;
+  /** Resolves when no apply is in flight (an apply is atomic per file and is allowed to finish). */
+  settle?: () => Promise<void>;
+  rollbackEnabled?: () => boolean;
+  rollback?: (runId: string) => Promise<RollbackSummary>;
+  /** Files this run changed (for the "kept" message when rollback is off). */
+  changedFiles?: (runId: string) => string[];
+  /** sessions.cancel is fire-and-forget; this bounds how long we keep its promise alive (default 3000). */
+  cancelTimeoutMs?: number;
+  /** Upper bound for waiting on an in-flight apply (default 15000). */
+  settleTimeoutMs?: number;
 }
 
 export interface SendOptions {
@@ -112,6 +141,26 @@ export type SendResult =
       view: TurnView;
     }
   | { ok: false; reason: "busy" | "empty" };
+
+const CANCEL_DONE = Symbol("cancel-done");
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+    promise.then(
+      (v) => (clearTimeout(timer), resolve(v)),
+      (e: unknown) => (clearTimeout(timer), reject(e instanceof Error ? e : new Error(String(e)))),
+    );
+  });
+}
+
+/** "Cancelled. Rolled back N files from this run: <paths>" (+ what was left alone or could not be restored). */
+export function describeRollback(r: RollbackSummary): string {
+  const parts = [r.restored.length > 0 ? `Cancelled. Rolled back ${r.restored.length} file${r.restored.length === 1 ? "" : "s"} from this run: ${r.restored.join(", ")}` : "Cancelled. Nothing had been changed."];
+  if (r.skipped.length > 0) parts.push(`Left as you edited them (changed after Forge wrote them): ${r.skipped.join(", ")}`);
+  if (r.failed.length > 0) parts.push(`Could not restore: ${r.failed.map((f) => `${f.path} (${f.error})`).join(", ")}`);
+  return parts.join(". ").replace(/\.\. /g, ". ");
+}
 
 class StopRequested extends Error {
   constructor(readonly reason = "Stopped") {
@@ -143,6 +192,8 @@ export class AgentController {
   private lastDetail: string | undefined;
   private abort = new AbortController();
   private stopRequested = false;
+  /** The Stop flow in progress (shared by repeated Stop clicks). */
+  private cancelFlow: Promise<void> | undefined;
   private readonly afterPause: AfterPausePolicy;
 
   constructor(private readonly deps: ControllerDeps) {
@@ -168,46 +219,111 @@ export class AgentController {
     }
 
     this.stopRequested = false;
+    this.cancelFlow = undefined;
     this.abort = new AbortController();
     this.ctx = { options, session: undefined };
     this.lastView = undefined;
     this.lastDetail = undefined;
     this.runState.transition("running");
     this.deps.ui.onUserMessage(options.display ?? message);
-    try {
-      await this.run(message);
-    } catch (err) {
-      if (err instanceof StopRequested) this.finish("cancelled", err.reason);
-      else this.fail(err instanceof RunFailed ? err.message : describeError(err));
+    this.deps.registry?.begin(this.deps.getRunId?.() ?? `run-${Date.now()}`);
+    // The stream work runs as its own task: a provider that never answers must not keep send() (and so the UI) waiting
+    // after Stop. When Stop finishes, send() returns even if the task is still stuck; its late events are ignored.
+    const task = this.run(message).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    const outcome = await Promise.race([task, this.cancelSignal()]);
+    if (outcome !== CANCEL_DONE) {
+      const err = outcome;
+      if (this.stopRequested || err instanceof StopRequested) await this.stopFlowOrStart(err instanceof StopRequested ? err.reason : undefined);
+      else if (err !== undefined) this.fail(err instanceof RunFailed ? err.message : describeError(err));
     }
     const view = this.lastView ?? new TurnReducer().view;
     return { ok: true, state: this.runState.state, view, ...(this.lastDetail !== undefined ? { detail: this.lastDetail } : {}) };
   }
 
-  /**
-   * Stop button. While running it asks TrueForge to cancel and lets the stream end itself with
-   * turn.done(cancelled); while waiting for approval it abandons the pending decisions without resuming.
-   */
-  async stop(): Promise<void> {
-    const state = this.runState.state;
-    if (state === "awaitingApproval") {
-      this.stopRequested = true;
-      this.abort.abort();
+  private cancelWaiters: Array<() => void> = [];
+
+  /** Resolves with CANCEL_DONE once a Stop flow has finished (so send() can return without the stream task). */
+  private cancelSignal(): Promise<typeof CANCEL_DONE> {
+    return new Promise((resolve) => this.cancelWaiters.push(() => resolve(CANCEL_DONE)));
+  }
+
+  /** The run ended because of a cancellation that did not come from our Stop button (e.g. a server timeout). */
+  private async stopFlowOrStart(reason: string | undefined): Promise<void> {
+    if (this.cancelFlow) {
+      await this.cancelFlow;
       return;
     }
-    if (state !== "running") return;
+    this.finish("cancelled", reason);
+  }
+
+  /**
+   * Stop button. Everything the user sees happens synchronously (state -> cancelling, handlers aborted); nothing
+   * waits for the network. Order: (a) cancelling, (b) abort the local stream and ask TrueForge to cancel without
+   * waiting for the answer, (c) reject pending approvals, (d) kill commands and other in-flight work, (e) let an
+   * in-flight apply finish, (f) roll back this run's changes (forge.rollbackOnCancel) and end `cancelled`.
+   * Calling it again while stopping, or when nothing runs, returns the same flow / does nothing.
+   */
+  stop(): Promise<void> {
+    if (!this.runState.stoppable) return this.cancelFlow ?? Promise.resolve();
+    const wasRunning = this.runState.state === "running";
     this.stopRequested = true;
+    this.runState.transition("cancelling"); // (a) the UI shows "Stopping…" in this same tick
+    const runId = this.deps.getRunId?.();
+    this.deps.registry?.cancel();
+    this.abort.abort(); // (b) local stream reader + (c) every pending ApprovalHandler promise
+    this.cancelFlow = this.cancelRun(runId, wasRunning);
+    return this.cancelFlow;
+  }
+
+  private async cancelRun(runId: string | undefined, wasRunning: boolean): Promise<void> {
+    const { cancel, log, ui } = this.deps;
+    await Promise.resolve(); // let the "Stopping…" state reach the UI before any heavier work starts
     const session = this.ctx?.session;
-    if (!session) {
-      this.abort.abort(); // still preparing/creating the session: no turn exists yet
-      return;
+    if (session && wasRunning) {
+      // fire and forget: a provider that hangs or never answers must not delay the UI
+      const timeoutMs = cancel?.cancelTimeoutMs ?? 3000;
+      const timer = new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs).unref?.());
+      timer.catch(() => undefined);
+      Promise.race([this.deps.client.cancel(session.id), timer]).then(
+        () => log?.(`sessions.cancel(${session.id}) accepted`),
+        (err: unknown) => log?.(`sessions.cancel(${session.id}) failed or timed out (ignored): ${describeError(err)}`),
+      );
     }
     try {
-      await this.deps.client.cancel(session.id);
+      cancel?.cancelWork?.(); // (d)
     } catch (err) {
-      this.stopRequested = false;
-      this.deps.ui.onNotice("error", `Could not cancel the run: ${describeError(err)}`);
+      log?.(`cancelWork failed: ${describeError(err)}`);
     }
+    try {
+      if (cancel?.settle) await withTimeout(cancel.settle(), cancel.settleTimeoutMs ?? 15000); // (e)
+    } catch (err) {
+      log?.(`waiting for the in-flight apply failed: ${describeError(err)}`);
+    }
+
+    // (f)
+    let detail = "Cancelled.";
+    const changed = runId !== undefined ? (cancel?.changedFiles?.(runId) ?? []) : [];
+    try {
+      if (runId !== undefined && cancel?.rollback && (cancel.rollbackEnabled?.() ?? true)) {
+        const r = await cancel.rollback(runId);
+        detail = describeRollback(r);
+        if (r.restored.length > 0 || r.skipped.length > 0 || r.failed.length > 0) ui.onNotice(r.failed.length > 0 || r.skipped.length > 0 ? "warning" : "info", detail);
+      } else if (changed.length > 0) {
+        detail = `Cancelled. ${changed.length} applied file${changed.length === 1 ? "" : "s"} kept (rollback on cancel is off): ${changed.join(", ")}`;
+        ui.onNotice("info", detail);
+      }
+    } catch (err) {
+      detail = `Cancelled, but rolling back failed: ${describeError(err)}`;
+      ui.onNotice("error", detail);
+    }
+    this.lastDetail = detail;
+    this.runState.transition("cancelled", detail);
+    const waiters = this.cancelWaiters;
+    this.cancelWaiters = [];
+    for (const w of waiters) w();
   }
 
   /** Forgets the session so the next message starts a fresh conversation. Ignored while a run is active. */
@@ -233,11 +349,18 @@ export class AgentController {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       reducer.beginRound();
       const stream = await this.openStream(input, round === 0 && continuingPausedSession);
-      for await (const event of stream) {
-        const change = reducer.apply(event); // apply first: `view` must reflect this event
-        this.lastView = reducer.view;
-        ui.onTurnChange(this.lastView, change);
+      try {
+        for await (const event of stream) {
+          if (this.stopRequested) break; // late events after Stop are ignored
+          const change = reducer.apply(event); // apply first: `view` must reflect this event
+          this.lastView = reducer.view;
+          ui.onTurnChange(this.lastView, change);
+        }
+      } catch (err) {
+        if (this.stopRequested) throw new StopRequested(); // the aborted reader throws; that is the Stop we asked for
+        throw err;
       }
+      if (this.stopRequested) throw new StopRequested();
       const view = reducer.view;
       this.lastView = view;
 
@@ -349,7 +472,7 @@ export class AgentController {
     const session = this.ctx?.session;
     if (!session) throw new RunFailed("No session.");
     try {
-      return await this.deps.client.createTurnStream(session.id, input);
+      return await this.deps.client.createTurnStream(session.id, input, { signal: this.abort.signal });
     } catch (err) {
       if (!mayFallBackToNewSession) throw err;
       this.deps.log?.(`continuing the paused session failed (${describeError(err)}); starting a new session`);
@@ -357,7 +480,7 @@ export class AgentController {
       await this.ensureSession();
       const fresh = this.ctx?.session;
       if (!fresh) throw new RunFailed("No session.");
-      return this.deps.client.createTurnStream(fresh.id, input);
+      return this.deps.client.createTurnStream(fresh.id, input, { signal: this.abort.signal });
     }
   }
 
@@ -367,7 +490,7 @@ export class AgentController {
   }
 
   private finish(state: "done" | "error" | "cancelled", detail?: string): void {
-    if (!this.runState.busy) return;
+    if (!this.runState.busy || this.runState.state === "cancelling") return; // the Stop flow owns the final transition
     this.lastDetail = detail;
     this.runState.transition(state, detail);
   }

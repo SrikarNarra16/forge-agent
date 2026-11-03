@@ -255,7 +255,7 @@ describe("AgentController: stop", () => {
     await controller.stop();
     expect(client.cancels).toEqual(["sess-1"]);
     await run;
-    expect(ui.states).toEqual(["running", "cancelled"]);
+    expect(ui.states).toEqual(["running", "cancelling", "cancelled"]);
     expect(controller.state).toBe("cancelled");
   });
 
@@ -272,18 +272,19 @@ describe("AgentController: stop", () => {
     expect(client.sessions).toEqual(["sess-1"]);
   });
 
-  it("a failing cancel call leaves the run going and tells the user", async () => {
+  it("a failing sessions.cancel does not keep the run alive: the local Stop still completes (error is only logged)", async () => {
     const gate = deferred();
-    const { controller, client, ui } = rig([() => gated([turnCreated()], gate.promise, [turnDone({ status: "done" })])]);
+    const logs: string[] = [];
+    const { controller, client } = rig([() => gated([turnCreated()], gate.promise, [turnDone({ status: "done" })])]);
+    (controller as unknown as { deps: { log: (m: string) => void } }).deps.log = (m) => logs.push(m);
     client.cancelError = new Error("503");
     const run = controller.send("a");
     await tick();
     await controller.stop();
-    expect(ui.notices[0]).toMatchObject({ level: "error", text: expect.stringContaining("Could not cancel") });
-    expect(controller.state).toBe("running");
-    gate.resolve();
     await run;
-    expect(controller.state).toBe("done");
+    expect(controller.state).toBe("cancelled");
+    await tick();
+    expect(logs.join("\n")).toMatch(/sessions\.cancel\(sess-1\) failed or timed out/);
   });
 
   it("is a no-op when idle or finished", async () => {
@@ -306,7 +307,7 @@ describe("AgentController: stop", () => {
     expect(client.turns).toHaveLength(1);
     expect(client.cancels).toEqual([]); // nothing is running on the server
     expect(approvals.signals.every((s) => s.aborted)).toBe(true);
-    expect(ui.states).toEqual(["running", "awaitingApproval", "cancelled"]);
+    expect(ui.states).toEqual(["running", "awaitingApproval", "cancelling", "cancelled"]);
   });
 
   describe("the next send after Stop during an approval pause", () => {
