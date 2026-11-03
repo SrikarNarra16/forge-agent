@@ -1,3 +1,4 @@
+import type { ChainEvent } from "../../src/trueforge/modelChain";
 import type { ApprovalDecision, ApprovalHandler, NoticeLevel, PendingToolCall, SessionSpec, TurnClient, TurnInput, UiSink } from "../../src/trueforge/agentController";
 import type { ReducerChange, StreamEvent, TurnView } from "../../src/trueforge/events";
 import type { RunState } from "../../src/trueforge/runState";
@@ -96,6 +97,8 @@ export class RecordingUi implements UiSink {
   readonly users: string[] = [];
   readonly sessionsSeen: Array<{ sessionId: string; model?: string }> = [];
   resets = 0;
+  readonly chainEvents: ChainEvent[] = [];
+  discards = 0;
   lastView: TurnView | undefined;
   changes: ReducerChange[] = [];
 
@@ -118,6 +121,12 @@ export class RecordingUi implements UiSink {
   }
   onReset(): void {
     this.resets++;
+  }
+  onChain(event: ChainEvent): void {
+    this.chainEvents.push(event);
+  }
+  onAttemptDiscarded(): void {
+    this.discards++;
   }
 }
 

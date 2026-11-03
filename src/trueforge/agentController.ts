@@ -1,3 +1,4 @@
+import { classifyFailure, exhaustedMessage, isModelFailure, planNext, retryingMessage, shortReason, sideEffectsMessage, switchedMessage, type AttemptRecord, type ChainEvent, type Failure, type FailureClass, type FailureSource } from "./modelChain";
 import type { RunRegistry } from "./runRegistry";
 import type { TrueForgeApi } from "@truefoundry/trueforge-sdk";
 import { describeError } from "./client";
@@ -66,6 +67,10 @@ export interface UiSink {
   onNotice(level: NoticeLevel, text: string): void;
   /** The conversation was cleared (New chat). */
   onReset(): void;
+  /** Model retry / fallback progress (a notice that updates in place). */
+  onChain?(event: ChainEvent): void;
+  /** The failed attempt's partial output (assistant text, tool cards) must disappear before the next attempt. */
+  onAttemptDiscarded?(): void;
 }
 
 export type PrepareResult = { ok: true; model?: string } | { ok: false; message: string };
@@ -98,8 +103,26 @@ export interface ControllerDeps {
   getRunId?: () => string;
   /** Shared with the handlers and tools: once a run is cancelled nothing may act for it. */
   registry?: RunRegistry;
+  /** Model fallback: the ordered models and how to judge an attempt. Without it a failure simply ends the run. */
+  chain?: ChainDeps;
   /** What Stop does besides the state change; every part is optional so tests and the eval harness can inject fakes. */
   cancel?: CancelDeps;
+}
+
+export interface ChainDeps {
+  /** forge.models, primary first. */
+  models: () => readonly string[];
+  /** Stall watchdog limits; the watchdog is off without it. */
+  stall?: () => { firstMs: number; idleMs: number };
+  /** Changes the failed run already made (applied files, executed commands); any of them forbids a replay. */
+  sideEffects?: (runId: string | undefined) => { files: string[]; commands: string[] };
+  /** Cancellable sleep for the backoff (default: setTimeout). */
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  random?: () => number;
+  now?: () => number;
+  /** How often the watchdog checks (default 1000 ms). */
+  tickMs?: number;
+  sessionUrl?: (sessionId: string) => string;
 }
 
 export interface RollbackSummary {
@@ -149,6 +172,46 @@ export type SendResult =
   | { ok: false; reason: "busy" | "empty" };
 
 const CANCEL_DONE = Symbol("cancel-done");
+const ABORTED = Symbol("aborted");
+
+/** Events that show the model/provider is alive (the instant `model.message` start and turn.created are not). */
+function isProgress(event: StreamEvent): boolean {
+  switch (event.type) {
+    case "model.message.delta":
+    case "tool.response":
+    case "tool.approval_required":
+    case "turn.done":
+    case "thread.created":
+    case "thread.done":
+    case "thread.context_compaction_started":
+    case "thread.context_compaction_finished":
+      return true;
+    case "model.message": {
+      const m = event as { content?: unknown; toolCalls?: unknown; finishReason?: unknown };
+      return Boolean(m.content) || Boolean(m.toolCalls) || Boolean(m.finishReason);
+    }
+    default:
+      return false;
+  }
+}
+
+/** The model produced output (a token, a reasoning delta or a tool call), as opposed to bookkeeping events. */
+function isToken(event: StreamEvent): boolean {
+  return event.type === "model.message.delta" || (event.type === "model.message" && isProgress(event));
+}
+
+function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    }
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -175,10 +238,29 @@ class StopRequested extends Error {
   }
 }
 
-class RunFailed extends Error {}
+class RunFailed extends Error {
+  constructor(
+    message: string,
+    /** Where the message comes from: TrueForge reporting a model problem, our own transport, or the agent (never a model failure). */
+    readonly source: FailureSource | "agent" = "agent",
+    readonly forced?: FailureClass,
+  ) {
+    super(message);
+  }
+}
+
+/** The stream made no progress for too long (see ChainDeps.stall). */
+class StallError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StallError";
+  }
+}
 
 interface SessionRef {
   id: string;
+  /** Model override this session was created with (undefined = the agent definition's model). */
+  model?: string | undefined;
   /** The last turn of this session ended paused and was never resumed. */
   paused: boolean;
 }
@@ -200,6 +282,8 @@ export class AgentController {
   private stopRequested = false;
   /** The Stop flow in progress (shared by repeated Stop clicks). */
   private cancelFlow: Promise<void> | undefined;
+  /** Aborts ONE attempt (stall watchdog or Stop); Stop aborts it through `abort`. */
+  private attemptAbort = new AbortController();
   private readonly afterPause: AfterPausePolicy;
 
   constructor(private readonly deps: ControllerDeps) {
@@ -235,7 +319,7 @@ export class AgentController {
     this.deps.registry?.begin(this.deps.getRunId?.() ?? `run-${Date.now()}`);
     // The stream work runs as its own task: a provider that never answers must not keep send() (and so the UI) waiting
     // after Stop. When Stop finishes, send() returns even if the task is still stuck; its late events are ignored.
-    const task = this.run(message).then(
+    const task = this.runWithChain(message).then(
       () => undefined,
       (err: unknown) => err,
     );
@@ -284,20 +368,23 @@ export class AgentController {
     return this.cancelFlow;
   }
 
+  /** sessions.cancel, fire and forget: a provider that hangs or never answers must not delay the UI. */
+  private fireCancel(sessionId: string, why: string): void {
+    const { cancel, log } = this.deps;
+    const timeoutMs = cancel?.cancelTimeoutMs ?? 3000;
+    const timer = new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs).unref?.());
+    timer.catch(() => undefined);
+    Promise.race([this.deps.client.cancel(sessionId), timer]).then(
+      () => log?.(`sessions.cancel(${sessionId}) accepted (${why})`),
+      (err: unknown) => log?.(`sessions.cancel(${sessionId}) failed or timed out (ignored): ${describeError(err)}`),
+    );
+  }
+
   private async cancelRun(runId: string | undefined, wasRunning: boolean): Promise<void> {
-    const { cancel, log, ui } = this.deps;
+    const { cancel, ui } = this.deps;
     await Promise.resolve(); // let the "Stopping…" state reach the UI before any heavier work starts
     const session = this.ctx?.session;
-    if (session && wasRunning) {
-      // fire and forget: a provider that hangs or never answers must not delay the UI
-      const timeoutMs = cancel?.cancelTimeoutMs ?? 3000;
-      const timer = new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs).unref?.());
-      timer.catch(() => undefined);
-      Promise.race([this.deps.client.cancel(session.id), timer]).then(
-        () => log?.(`sessions.cancel(${session.id}) accepted`),
-        (err: unknown) => log?.(`sessions.cancel(${session.id}) failed or timed out (ignored): ${describeError(err)}`),
-      );
-    }
+    if (session && wasRunning) this.fireCancel(session.id, "Stop");
     try {
       cancel?.cancelWork?.(); // (d)
     } catch (err) {
@@ -345,8 +432,87 @@ export class AgentController {
 
   // --- internals ---------------------------------------------------------------------------------
 
+  /** Maps whatever an attempt threw to a failure class (see modelChain.ts). */
+  private failureOf(err: unknown): Failure {
+    if (err instanceof StallError) return classifyFailure({ message: err.message, source: "watchdog" });
+    if (err instanceof RunFailed) {
+      if (err.forced) return { class: err.forced, message: err.message };
+      return err.source === "agent" ? { class: "fatal", message: err.message } : classifyFailure({ message: err.message, source: err.source });
+    }
+    return classifyFailure({ message: describeError(err), source: "transport" });
+  }
+
+  /**
+   * Runs the user's message on the first model; when the provider fails, retries or falls back per modelChain.ts
+   * (a fresh TrueForge session per attempt, the SAME message text and context block), but only while the failed
+   * attempt had no side effects. Stop cancels the whole chain.
+   */
+  private async runWithChain(text: string): Promise<void> {
+    const chain = this.deps.chain;
+    const models = chain?.models() ?? [];
+    if (!chain || models.length === 0) return this.run(text);
+    const { ui, log } = this.deps;
+    const now = chain.now ?? Date.now;
+    const startedAt = now();
+    const baseOptions = this.ctx?.options ?? {};
+    const hadEarlierTurns = baseOptions.freshSession !== true && this.session !== undefined;
+    const history: AttemptRecord[] = [];
+    let model = models[0] as string;
+    for (let attempt = 1; ; attempt++) {
+      if (this.ctx) {
+        this.ctx.options = { ...baseOptions, model };
+        this.ctx.session = undefined;
+      }
+      if (attempt > 1 && baseOptions.freshSession !== true) this.session = undefined; // every retry/advance starts a NEW session
+      try {
+        await this.run(text);
+        return;
+      } catch (err) {
+        if (err instanceof StopRequested || this.stopRequested) throw err instanceof StopRequested ? err : new StopRequested();
+        const failure = this.failureOf(err);
+        const sessionId = this.ctx?.session?.id;
+        history.push({ model, failure });
+        log?.(`attempt ${attempt}: model=${model} failed class=${failure.class} (${shortReason(failure.message)})${sessionId ? ` session=${sessionId}${chain.sessionUrl ? ` url=${chain.sessionUrl(sessionId)}` : ""}` : ""}`);
+
+        if (!isModelFailure(failure.class)) {
+          if (failure.class === "trueforge-down") ui.onChain?.({ kind: "trueforge-down", model, text: failure.message });
+          throw err instanceof RunFailed ? err : new RunFailed(failure.message, "agent");
+        }
+        // Replaying is only safe when the failed attempt changed nothing.
+        const effects = chain.sideEffects?.(this.deps.getRunId?.());
+        if (effects && (effects.files.length > 0 || effects.commands.length > 0)) {
+          const message = sideEffectsMessage(model, failure, effects);
+          ui.onChain?.({ kind: "blocked", model, text: message });
+          throw new RunFailed(message, "agent");
+        }
+        const next = planNext(history, models, chain.random);
+        if (next.kind === "stop") {
+          const message = exhaustedMessage(history, models);
+          ui.onChain?.({ kind: "exhausted", model, text: message });
+          throw new RunFailed(message, "agent");
+        }
+        ui.onAttemptDiscarded?.(); // the failed attempt's partial text and tool cards must not stay in the transcript
+        if (next.kind === "retry") {
+          ui.onChain?.({ kind: "retrying", model, text: retryingMessage(model, next.delayMs, failure) });
+          await (chain.sleep ?? sleepUnlessAborted)(next.delayMs, this.abort.signal);
+          if (this.stopRequested) throw new StopRequested();
+        } else {
+          const afterMs = now() - startedAt;
+          const note = hadEarlierTurns ? " The new session does not contain the earlier messages of this chat." : "";
+          ui.onChain?.({ kind: "switched", model: next.model, text: `${switchedMessage({ model, failure }, next.model, afterMs)}.${note}`, afterMs });
+          log?.(`fallback: ${model} -> ${next.model} after ${afterMs} ms`);
+          model = next.model;
+        }
+      }
+    }
+  }
+
   private async run(text: string): Promise<void> {
     const { ui } = this.deps;
+    this.attemptAbort = new AbortController();
+    const attempt = this.attemptAbort;
+    if (this.abort.signal.aborted) attempt.abort();
+    else this.abort.signal.addEventListener("abort", () => attempt.abort(), { once: true });
     const reducer = new TurnReducer();
     const continuingPausedSession = await this.ensureSession();
     if (this.stopRequested) throw new StopRequested();
@@ -362,9 +528,9 @@ export class AgentController {
 
       if (!view.done) {
         if (this.stopRequested) throw new StopRequested();
-        throw new RunFailed("The connection to TrueForge ended before the turn finished.");
+        throw new RunFailed("The connection to TrueForge ended before the turn finished.", "turn", "transient");
       }
-      if (view.done.status === "error") throw new RunFailed(view.done.message);
+      if (view.done.status === "error") throw new RunFailed(view.done.message, "turn");
       if (view.done.status === "cancelled") throw new StopRequested(view.done.reason);
 
       if (view.unsupportedPauses.length > 0) {
@@ -421,29 +587,85 @@ export class AgentController {
     const { log } = this.deps;
     let seen = 0;
     let turnId: string | undefined;
+    const now = this.deps.chain?.now ?? Date.now;
+    const stallLimits = this.deps.chain?.stall?.();
+    let lastProgress = now();
+    let sawToken = false;
+    let stalled: string | undefined;
+    let watchdog: ReturnType<typeof setInterval> | undefined;
+    if (stallLimits) {
+      watchdog = setInterval(() => {
+        const view = reducer.view;
+        // tool time and human time are not stalls: pause while a tool runs, an approval is pending or compaction runs
+        const paused = this.runState.state === "awaitingApproval" || view.compaction.active || view.toolCalls.some((c) => c.status === "running" || c.status === "awaiting_approval");
+        if (paused) {
+          lastProgress = now();
+          return;
+        }
+        const limit = sawToken ? stallLimits.idleMs : stallLimits.firstMs;
+        if (stalled === undefined && now() - lastProgress > limit) {
+          stalled = `no stream progress for ${Math.round(limit / 1000)} s${sawToken ? "" : " (no first token)"}`;
+          const session = this.ctx?.session;
+          if (session) this.fireCancel(session.id, "stall watchdog"); // the same instant, no-wait path as Stop
+          this.attemptAbort.abort();
+        }
+      }, this.deps.chain?.tickMs ?? 1000);
+      watchdog.unref?.();
+    }
     const feed = async (source: AsyncIterable<StreamEvent>): Promise<unknown> => {
+      const iterator = source[Symbol.asyncIterator]();
+      const aborted = new Promise<typeof ABORTED>((resolve) => {
+        const signal = this.attemptAbort.signal;
+        if (signal.aborted) resolve(ABORTED);
+        else signal.addEventListener("abort", () => resolve(ABORTED), { once: true });
+      });
       try {
-        for await (const event of source) {
+        for (;;) {
+          // race the reader against the abort so a stream that ignores the signal cannot hold the run
+          const step = await Promise.race([iterator.next(), aborted]);
+          if (step === ABORTED) {
+            void iterator.return?.().catch(() => undefined);
+            if (this.stopRequested) throw new StopRequested();
+            if (stalled !== undefined) throw new StallError(stalled);
+            return new Error("the stream was aborted");
+          }
+          if (step.done) return undefined;
+          const event = step.value;
           if (this.stopRequested) return undefined; // late events after Stop are ignored
           if (event.type === "turn.created") turnId = event.turnId;
           seen++;
           this.applyEvent(event, reducer);
+          if (isProgress(event)) {
+            lastProgress = now();
+            if (isToken(event)) sawToken = true;
+          }
         }
-        return undefined;
       } catch (err) {
+        if (err instanceof StopRequested || err instanceof StallError) throw err;
         if (this.stopRequested) throw new StopRequested(); // the aborted reader throws; that is the Stop we asked for
+        if (stalled !== undefined) throw new StallError(stalled);
         return err ?? new Error("stream error");
       }
     };
+    try {
+      await this.drain(feed, stream, reducer, () => seen, () => turnId);
+    } finally {
+      if (watchdog) clearInterval(watchdog);
+    }
+  }
 
+  private async drain(feed: (source: AsyncIterable<StreamEvent>) => Promise<unknown>, stream: AsyncIterable<StreamEvent>, reducer: TurnReducer, getSeen: () => number, getTurnId: () => string | undefined): Promise<void> {
+    const { log } = this.deps;
     const failure = await feed(stream);
     if (this.stopRequested || reducer.view.done) return;
+    const seen = getSeen();
+    const turnId = getTurnId();
 
     const session = this.ctx?.session;
     const client = this.deps.client;
     const reason = failure !== undefined ? describeError(failure) : "the stream ended without turn.done";
     if (!session || !turnId || !client.getTurnStatus) {
-      if (failure !== undefined) throw failure; // cannot recover: report the actual error
+      if (failure !== undefined) throw new RunFailed(describeError(failure), "turn"); // cannot recover: report the actual error
       return; // the caller reports "connection ended"
     }
     log?.(`stream interrupted after ${seen} events (${reason}); checking turn ${turnId}`);
@@ -452,7 +674,7 @@ export class AgentController {
       status = await client.getTurnStatus(session.id, turnId);
     } catch (err) {
       log?.(`resume: could not read the turn status (${describeError(err)})`);
-      if (failure !== undefined) throw new RunFailed(`The connection to TrueForge was lost (${reason}) and the turn status could not be read (${describeError(err)}).`);
+      if (failure !== undefined) throw new RunFailed(`The connection to TrueForge was lost (${reason}) and the turn status could not be read (${describeError(err)}). Is TrueForge still running?`, "transport", "trueforge-down");
       return;
     }
     if (status === "running") {
@@ -460,16 +682,16 @@ export class AgentController {
       log?.(`resume: turn still running; re-attaching after event ${seen}`);
       let again: AsyncIterable<StreamEvent>;
       try {
-        again = await client.subscribeToTurn(session.id, turnId, { afterSequenceNumber: seen, signal: this.abort.signal });
+        again = await client.subscribeToTurn(session.id, turnId, { afterSequenceNumber: seen, signal: this.attemptAbort.signal });
       } catch (err) {
         if (this.stopRequested) throw new StopRequested();
-        throw new RunFailed(`The connection to TrueForge was lost (${reason}) and re-attaching to the turn failed: ${describeError(err)}`);
+        throw new RunFailed(`The connection to TrueForge was lost (${reason}) and re-attaching to the turn failed: ${describeError(err)}`, "turn", "transient");
       }
       const second = await feed(again);
       if (!this.stopRequested && !reducer.view.done) {
-        throw new RunFailed(`The connection to TrueForge dropped again after resuming (${second !== undefined ? describeError(second) : "the stream ended without turn.done"}).`);
+        throw new RunFailed(`The connection to TrueForge dropped again after resuming (${second !== undefined ? describeError(second) : "the stream ended without turn.done"}).`, "turn", "transient");
       }
-      log?.(`resume: re-attached stream delivered ${seen} events in total`);
+      log?.(`resume: re-attached stream delivered ${getSeen()} events in total`);
       return;
     }
     if (client.listTurnEvents) {
@@ -478,7 +700,7 @@ export class AgentController {
       try {
         list = await client.listTurnEvents(session.id, turnId);
       } catch (err) {
-        throw new RunFailed(`The connection to TrueForge was lost (${reason}) and the finished turn could not be read: ${describeError(err)}`);
+        throw new RunFailed(`The connection to TrueForge was lost (${reason}) and the finished turn could not be read: ${describeError(err)}`, "transport", "trueforge-down");
       }
       for (const event of list) {
         if (this.stopRequested) throw new StopRequested();
@@ -517,6 +739,10 @@ export class AgentController {
         continuingPaused = true;
       }
     }
+    if (!fresh && this.session && ctx.options.model !== undefined && this.session.model !== undefined && this.session.model !== ctx.options.model) {
+      this.session = undefined; // the model was switched (Forge: Switch Model): a session keeps its model, so start a new one
+      continuingPaused = false;
+    }
     if (!fresh && this.session) {
       ctx.session = this.session;
       return continuingPaused;
@@ -527,7 +753,10 @@ export class AgentController {
     let model = requestedModel;
     if (this.deps.prepare) {
       const prepared = await this.deps.prepare({ agentName, ...(requestedModel ? { model: requestedModel } : {}) });
-      if (!prepared.ok) throw new RunFailed(prepared.message);
+      if (!prepared.ok) {
+        const notConfigured = /is not configured in TrueForge/.test(prepared.message);
+        throw new RunFailed(prepared.message, notConfigured ? "turn" : "transport", notConfigured ? "unreachable" : /not reachable/.test(prepared.message) ? "trueforge-down" : "fatal");
+      }
       model = prepared.model ?? requestedModel;
     }
     if (this.stopRequested) throw new StopRequested();
@@ -536,7 +765,7 @@ export class AgentController {
       ...(requestedModel ? { model: requestedModel } : {}),
       metadata: { client: "forge-agent", purpose: ctx.options.purpose ?? (fresh ? "fresh-run" : "panel") },
     });
-    const ref: SessionRef = { id: created.id, paused: false };
+    const ref: SessionRef = { id: created.id, paused: false, model: requestedModel };
     ctx.session = ref;
     if (!fresh) this.session = ref;
     ui.onSession({ sessionId: created.id, ...(model ? { model } : {}) });
@@ -551,7 +780,7 @@ export class AgentController {
     const session = this.ctx?.session;
     if (!session) throw new RunFailed("No session.");
     try {
-      return await this.deps.client.createTurnStream(session.id, input, { signal: this.abort.signal });
+      return await this.deps.client.createTurnStream(session.id, input, { signal: this.attemptAbort.signal });
     } catch (err) {
       if (!mayFallBackToNewSession) throw err;
       this.deps.log?.(`continuing the paused session failed (${describeError(err)}); starting a new session`);
@@ -559,7 +788,7 @@ export class AgentController {
       await this.ensureSession();
       const fresh = this.ctx?.session;
       if (!fresh) throw new RunFailed("No session.");
-      return this.deps.client.createTurnStream(fresh.id, input, { signal: this.abort.signal });
+      return this.deps.client.createTurnStream(fresh.id, input, { signal: this.attemptAbort.signal });
     }
   }
 
