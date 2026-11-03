@@ -10,7 +10,8 @@ import { registerExtrasTools, EXTRAS_SERVER } from "./tools/extras";
 import type { DecisionStore } from "./decisions";
 import { McpEvents } from "./events";
 import type { WorkspaceHost } from "./host";
-import { createToolDeps, type ToolBudgets, type ToolDeps } from "./tools/common";
+import type { CommandTickets } from "./commandTickets";
+import { createToolDeps, type RunGuard, type ToolBudgets, type ToolDeps } from "./tools/common";
 import { registerTools } from "./tools/index";
 
 /**
@@ -43,6 +44,10 @@ export interface McpServerOptions {
   terminal?: TerminalSink;
   /** Read-only editor actions for open_in_editor. */
   editor?: EditorUi;
+  /** Cancelled-run guard: tools refuse to act for a cancelled run and abort with it. */
+  run?: RunGuard;
+  /** run_command approval tickets (commands nobody approved do not run). */
+  tickets?: CommandTickets;
   budgets?: Partial<ToolBudgets>;
   /** Receives server and tool log lines (tool name, duration, argument summary). Never the token, request bodies or file contents. */
   log?: (message: string) => void;
@@ -98,7 +103,7 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse, ho
 
 export async function startMcpServer(options: McpServerOptions): Promise<McpServerHandle> {
   const { token, host, log } = options;
-  const deps = createToolDeps({ log: (m) => log?.(m), events: options.events ?? new McpEvents(), ...(options.budgets ? { budgets: options.budgets } : {}), ...(options.decisions ? { decisions: options.decisions } : {}), index: options.index, commands: options.commands, terminal: options.terminal, editor: options.editor });
+  const deps = createToolDeps({ log: (m) => log?.(m), events: options.events ?? new McpEvents(), ...(options.budgets ? { budgets: options.budgets } : {}), ...(options.decisions ? { decisions: options.decisions } : {}), index: options.index, commands: options.commands, terminal: options.terminal, editor: options.editor, run: options.run, tickets: options.tickets });
 
   const httpServer = http.createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];

@@ -21,6 +21,8 @@ export interface CommandResult {
 
 export interface CommandRunner {
   run(command: string, options: CommandRunOptions): Promise<CommandResult>;
+  /** Kills every running command (Stop). */
+  cancelAll?(): void;
 }
 
 /** Live view of commands (the "Forge: Terminal" output channel in VS Code). */

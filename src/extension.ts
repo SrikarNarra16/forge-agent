@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import { NodeCommandRunner } from "./host/commandRunner";
+import { CommandTickets } from "./mcp/commandTickets";
+import { RunRegistry } from "./trueforge/runRegistry";
 import { VscodeEditorUi } from "./host/editorUi";
 import { TerminalOutput } from "./host/terminalOutput";
 import { CommandApprovalHandler } from "./trueforge/commandApprovals";
@@ -57,6 +59,8 @@ export function activate(context: vscode.ExtensionContext): void {
   // (DecisionStore) that propose_edit / create_file then report; checkpoints make every run undoable.
   const host = new VscodeHost();
   const decisions = new DecisionStore();
+  const registry = new RunRegistry(); // which runs were cancelled; shared by the controller, handlers and tools
+  const tickets = new CommandTickets();
   const checkpoints = new CheckpointStore();
   const tracker = new ReviewTracker();
   const runScope = new RunScope({ decisions, tracker });
@@ -68,6 +72,7 @@ export function activate(context: vscode.ExtensionContext): void {
     decisions,
     tracker,
     getRunId: () => runScope.runId,
+    registry,
     log: (m) => log.info(m),
   });
   const restorer = new VscodeRestorer(host);
@@ -82,7 +87,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const terminal = new TerminalOutput();
   context.subscriptions.push(terminal);
   const commands = new NodeCommandRunner({ getPrefix: () => vscode.workspace.getConfiguration("forge").get<string>("commandPrefix", "") });
-  const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, editor: new VscodeEditorUi(host), log: (m) => log.info(m) });
+  const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, editor: new VscodeEditorUi(host), run: { isCancelled: () => registry.isCancelled(), signal: () => registry.signal }, tickets, log: (m) => log.info(m) });
   mcpStarting = mcp;
   mcp.catch((err: unknown) => log.error("MCP server failed to start", err));
   const getClient = () => createClient(status.baseUrl);
@@ -101,12 +106,29 @@ export function activate(context: vscode.ExtensionContext): void {
       new Map<string, ApprovalHandler>([
         ["propose_edit", reviewHandler],
         ["create_file", reviewHandler],
-        ["run_command", new CommandApprovalHandler({ inner: panel, getRunId: () => runScope.runId, getRoot: () => host.rootPath(), log: (m) => log.info(m) })],
+        ["run_command", new CommandApprovalHandler({ inner: panel, getRunId: () => runScope.runId, getRoot: () => host.rootPath(), tickets, registry, log: (m) => log.info(m) })],
       ]),
       panel,
     ),
     prepare: (request) => preflight({ bootstrap: () => bootstrapper.run(), getClient, baseUrl: () => status.baseUrl }, request),
     log: (m) => log.info(m),
+    getRunId: () => runScope.runId,
+    registry,
+    cancel: {
+      // Stop: kill commands, drop what could still act for the run, let an in-flight apply finish, then roll back.
+      cancelWork: () => {
+        commands.cancelAll();
+        decisions.clear();
+        tickets.clear();
+      },
+      settle: () => reviewHandler.idle(),
+      rollbackEnabled: () => vscode.workspace.getConfiguration("forge").get<boolean>("rollbackOnCancel", true),
+      rollback: async (runId) => {
+        const result = await checkpoints.rollbackRun(runId, new VscodeRestorer(host, false)); // never asks, never overwrites the user's own edits
+        return { restored: result.restored, skipped: result.skipped, failed: result.failed };
+      },
+      changedFiles: (runId) => checkpoints.filesOf(runId),
+    },
   });
 
   rollbackRun = async (runId) => (await checkpoints.rollbackRun(runId, restorer)).restored;

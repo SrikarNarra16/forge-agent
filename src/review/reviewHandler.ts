@@ -1,3 +1,4 @@
+import type { RunRegistry } from "../trueforge/runRegistry";
 import type { ApprovalDecision, ApprovalHandler, PendingToolCall } from "../trueforge/agentController";
 import type { DecisionStore, EditDecision } from "../mcp/decisions";
 import { HostError } from "../mcp/host";
@@ -97,6 +98,8 @@ export interface ReviewDeps {
   tracker: ReviewTracker;
   /** Id of the current run (one user request), for checkpoints. */
   getRunId: () => string;
+  /** Shared cancelled-run registry: a cancelled run never reviews or applies anything. */
+  registry?: RunRegistry;
   log?: (message: string) => void;
 }
 
@@ -110,11 +113,24 @@ function lineCount(text: string): number {
 export class ReviewApprovalHandler implements ApprovalHandler {
   private readonly locks = new PathLocks();
   private open = 0;
+  private applying = 0;
+  private idleWaiters: Array<() => void> = [];
 
   constructor(private readonly deps: ReviewDeps) {}
 
+  /** Resolves when no apply is in flight. An apply is atomic per file, so Stop waits for it instead of interrupting it. */
+  idle(): Promise<void> {
+    if (this.applying === 0) return Promise.resolve();
+    return new Promise((resolve) => this.idleWaiters.push(resolve));
+  }
+
+  private cancelled(): boolean {
+    return this.deps.registry?.isCancelled() === true;
+  }
+
   async decide(call: PendingToolCall, signal: AbortSignal): Promise<ApprovalDecision> {
     const { editor, tracker } = this.deps;
+    if (this.cancelled() || signal.aborted) throw new ReviewCancelled();
     if (call.name !== "propose_edit" && call.name !== "create_file") return deny(`Forge cannot review calls to ${call.name}.`);
     const tool: EditToolName = call.name;
 
@@ -240,6 +256,12 @@ export class ReviewApprovalHandler implements ApprovalHandler {
       newText: session.composed(),
       edits: hunkEdits(session.hunks, result.accepted),
     };
+    if (this.cancelled()) {
+      // Stop arrived after the user approved but before anything was written: nothing is applied.
+      tracker.update(call.id, { state: "cancelled" });
+      throw new ReviewCancelled();
+    }
+    this.applying++;
     try {
       await editor.apply(request);
     } catch (err) {
@@ -248,7 +270,21 @@ export class ReviewApprovalHandler implements ApprovalHandler {
       }
       return fail(`Could not write the change to ${rel}: ${err instanceof Error ? err.message : String(err)}. Nothing was applied.`);
     }
+    finally {
+      this.applying--;
+      if (this.applying === 0) {
+        const waiters = this.idleWaiters;
+        this.idleWaiters = [];
+        for (const w of waiters) w();
+      }
+    }
 
+    if (this.cancelled()) {
+      // The apply finished atomically, but the run was cancelled meanwhile: the Stop flow rolls it back, and the
+      // agent is not told anything (no decision is recorded for a cancelled run).
+      tracker.update(call.id, { state: "cancelled" });
+      throw new ReviewCancelled();
+    }
     const accepted = new Set(result.accepted);
     const decision: EditDecision = {
       path: rel,

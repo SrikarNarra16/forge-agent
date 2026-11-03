@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ContextIndex } from "../../context/indexer";
 import type { CommandRunner, TerminalSink } from "../commandRunner";
 import type { EditorUi } from "../editorUi";
+import type { CommandTickets } from "../commandTickets";
 import { isInside } from "../../util/paths";
 import { HostError } from "../host";
 import { DecisionStore } from "../decisions";
@@ -28,6 +29,15 @@ export const DEFAULT_BUDGETS: ToolBudgets = {
   listDirMaxEntries: 200,
 };
 
+/** Tells the tools whether the run they serve was cancelled, and gives them its abort signal. */
+export interface RunGuard {
+  isCancelled(): boolean;
+  /** Aborts when the run is cancelled; every in-flight tool call is aborted with it. */
+  signal(): AbortSignal | undefined;
+}
+
+export const CANCELLED_MESSAGE = "This run was cancelled by the user, so nothing was changed. Do not retry; wait for the user's next message.";
+
 export interface ToolDeps {
   /** Receives tool name, duration and an argument summary. Never file contents. */
   log: (message: string) => void;
@@ -43,10 +53,14 @@ export interface ToolDeps {
   terminal?: TerminalSink | undefined;
   /** Read-only editor actions (open_in_editor). */
   editor?: EditorUi | undefined;
+  /** Cancelled-run guard shared with the controller. */
+  run?: RunGuard | undefined;
+  /** run_command approval tickets; when set the tool refuses commands nobody approved. */
+  tickets?: CommandTickets | undefined;
 }
 
-export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets>; decisions?: DecisionStore; index?: ContextIndex | undefined; commands?: CommandRunner | undefined; terminal?: TerminalSink | undefined; editor?: EditorUi | undefined }): ToolDeps {
-  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets }, decisions: deps.decisions ?? new DecisionStore(), index: deps.index, commands: deps.commands, terminal: deps.terminal, editor: deps.editor };
+export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets>; decisions?: DecisionStore; index?: ContextIndex | undefined; commands?: CommandRunner | undefined; terminal?: TerminalSink | undefined; editor?: EditorUi | undefined; run?: RunGuard | undefined; tickets?: CommandTickets | undefined }): ToolDeps {
+  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets }, decisions: deps.decisions ?? new DecisionStore(), index: deps.index, commands: deps.commands, terminal: deps.terminal, editor: deps.editor, run: deps.run, tickets: deps.tickets };
 }
 
 /** Annotations for the read-only tools; annotations are informational, gating is by NAME in the agent spec. */
@@ -143,13 +157,25 @@ export async function runTool(
 ): Promise<CallToolResult> {
   const started = performance.now();
   let outcome = "ok";
+  if (deps.run?.isCancelled()) {
+    deps.log(`tool ${name} 0ms cancelled-run ${summary}`);
+    return errorResult(CANCELLED_MESSAGE);
+  }
+  // the run's own signal aborts every in-flight tool call when the user presses Stop
+  const runSignal = deps.run?.signal();
+  const effective = runSignal ? (signal ? AbortSignal.any([signal, runSignal]) : runSignal) : signal;
   try {
-    throwIfAborted(signal);
-    const result = await body();
+    throwIfAborted(effective);
+    const work = body();
+    // Stop aborts the run signal: return at once; the abandoned work finishes (or is killed) in the background
+    const aborted = effective ? new Promise<never>((_resolve, reject) => effective.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true })) : undefined;
+    aborted?.catch(() => undefined);
+    work.catch(() => undefined);
+    const result = await (aborted ? Promise.race([work, aborted]) : work);
     if (result.isError) outcome = "error";
     return result;
   } catch (err) {
-    if (signal?.aborted || isAbortError(err)) {
+    if (effective?.aborted || isAbortError(err)) {
       outcome = "cancelled";
       return errorResult("Cancelled.");
     }

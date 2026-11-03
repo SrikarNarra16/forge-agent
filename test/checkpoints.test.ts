@@ -55,7 +55,7 @@ describe("CheckpointStore", () => {
     c.recordApplied("r1", "a.py", "hash-of-a");
     c.recordApplied("r1", "new.py", "hash-of-new");
     const result = await c.rollbackRun("r1", restorer);
-    expect(result).toEqual({ restored: ["b.py", "new.py", "a.py"], failed: [] });
+    expect(result).toEqual({ restored: ["b.py", "new.py", "a.py"], skipped: [], failed: [] });
     expect(restorer.calls).toEqual(["restore b.py", "delete new.py", "restore a.py"]);
     expect(restorer.hashes).toEqual([undefined, "hash-of-new", "hash-of-a"]);
     expect(Object.fromEntries(files)).toEqual({ "a.py": "orig a", "b.py": "orig b" });
@@ -80,7 +80,7 @@ describe("CheckpointStore", () => {
   });
 
   it("rolling back an unknown run does nothing", async () => {
-    expect(await new CheckpointStore().rollbackRun("nope", new FakeRestorer(new Map()))).toEqual({ restored: [], failed: [] });
+    expect(await new CheckpointStore().rollbackRun("nope", new FakeRestorer(new Map()))).toEqual({ restored: [], skipped: [], failed: [] });
   });
 
   it("notifies listeners when the undoable state changes", async () => {

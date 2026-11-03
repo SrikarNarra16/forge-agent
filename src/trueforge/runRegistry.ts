@@ -6,10 +6,17 @@
 export class RunRegistry {
   private currentId: string | undefined;
   private readonly cancelledIds = new Set<string>();
+  private controller = new AbortController();
 
   /** A new run starts (RunScope mints the id on each user message). */
   begin(runId: string): void {
     this.currentId = runId;
+    this.controller = new AbortController();
+  }
+
+  /** Aborts when the current run is cancelled; in-flight tool calls observe it. */
+  get signal(): AbortSignal {
+    return this.controller.signal;
   }
 
   get current(): string | undefined {
@@ -17,7 +24,9 @@ export class RunRegistry {
   }
 
   cancel(runId: string | undefined = this.currentId): void {
-    if (runId !== undefined) this.cancelledIds.add(runId);
+    if (runId === undefined) return;
+    this.cancelledIds.add(runId);
+    if (runId === this.currentId) this.controller.abort();
   }
 
   isCancelled(runId: string | undefined = this.currentId): boolean {

@@ -27,8 +27,8 @@ export function createSdkTurnClient(getClient: () => TrueForge): TurnClient {
       const res = await client.sessions.create({ agent, ...(spec.metadata ? { metadata: spec.metadata } : {}) });
       return { id: res.data.id };
     },
-    async createTurnStream(sessionId, input) {
-      const stream = await getClient().sessions.createTurnStream(sessionId, { input });
+    async createTurnStream(sessionId, input, options) {
+      const stream = await getClient().sessions.createTurnStream(sessionId, { input }, options?.signal ? { abortSignal: options.signal } : undefined);
       return (async function* () {
         for await (const event of stream) yield event;
       })();

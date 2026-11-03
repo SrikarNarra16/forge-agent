@@ -15,9 +15,19 @@ export interface FileRestorer {
   deleteFile(path: string, expectedCurrentHash: string | undefined): Promise<void>;
 }
 
+/** Thrown by a restorer that must not overwrite a file the user changed after Forge wrote it. */
+export class UserModifiedError extends Error {
+  constructor(readonly path: string) {
+    super(`${path} was changed after Forge edited it`);
+    this.name = "UserModifiedError";
+  }
+}
+
 export interface RollbackResult {
   /** Paths that were restored (or deleted, for files the run created). */
   restored: string[];
+  /** Paths left alone because the user changed them after Forge wrote them. */
+  skipped: string[];
   failed: Array<{ path: string; error: string }>;
 }
 
@@ -72,7 +82,7 @@ export class CheckpointStore {
    */
   async rollbackRun(runId: string, restorer: FileRestorer): Promise<RollbackResult> {
     const run = this.runs.get(runId);
-    const result: RollbackResult = { restored: [], failed: [] };
+    const result: RollbackResult = { restored: [], skipped: [], failed: [] };
     if (!run) return result;
     for (const [path, entry] of [...run.entries()].reverse()) {
       try {
@@ -81,7 +91,10 @@ export class CheckpointStore {
         run.delete(path);
         result.restored.push(path);
       } catch (err) {
-        result.failed.push({ path, error: err instanceof Error ? err.message : String(err) });
+        if (err instanceof UserModifiedError) {
+          run.delete(path); // the user owns this file now: keep nothing to undo for it
+          result.skipped.push(path);
+        } else result.failed.push({ path, error: err instanceof Error ? err.message : String(err) });
       }
     }
     if (run.size === 0) this.runs.delete(runId);

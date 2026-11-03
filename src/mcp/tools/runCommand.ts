@@ -68,6 +68,7 @@ export async function runRunCommand(host: WorkspaceHost, deps: ToolDeps, args: R
     const root = await host.rootPath();
     const verdict = checkCommand(command, { root });
     if (!verdict.ok) return errorResult(`Command not run: ${verdict.reason} Use a safer command, or edit files with propose_edit.`);
+    if (deps.tickets && !deps.tickets.take(command)) return errorResult("Command not run: it was not approved by the user (or the run was cancelled). Ask the user, or use another approach.");
     if (!deps.commands) return errorResult("Running commands is not available in this editor session. Ask the user to run the command and paste the result.");
     deps.terminal?.started(command);
     const result = await deps.commands.run(command, { cwd: root, timeoutMs: seconds * 1000, signal, onOutput: (chunk) => deps.terminal?.output(chunk) });

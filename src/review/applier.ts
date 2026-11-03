@@ -1,3 +1,4 @@
+import { UserModifiedError } from "./checkpoints";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { HostError, type WorkspaceHost } from "../mcp/host";
@@ -79,7 +80,11 @@ export class VscodeReviewEditor implements ReviewEditor {
 
 /** Puts files back from a checkpoint; warns before overwriting something the user changed after Forge wrote it. */
 export class VscodeRestorer implements FileRestorer {
-  constructor(private readonly host: WorkspaceHost) {}
+  /** interactive=false (cancel): never ask, never overwrite a file the user changed (UserModifiedError -> skipped + warning). */
+  constructor(
+    private readonly host: WorkspaceHost,
+    private readonly interactive = true,
+  ) {}
 
   async restoreText(rel: string, text: string, expectedCurrentHash: string | undefined): Promise<void> {
     const root = await this.host.rootPath();
@@ -109,6 +114,7 @@ export class VscodeRestorer implements FileRestorer {
 
   private async confirmIfChanged(rel: string, current: string, expectedHash: string | undefined, question: string): Promise<void> {
     if (expectedHash === undefined || hashText(current) === expectedHash) return;
+    if (!this.interactive) throw new UserModifiedError(rel);
     const choice = await vscode.window.showWarningMessage(`${rel} was changed after Forge edited it. ${question}`, { modal: true }, "Continue");
     if (choice !== "Continue") throw new Error(`skipped ${rel}: it changed after Forge edited it`);
   }

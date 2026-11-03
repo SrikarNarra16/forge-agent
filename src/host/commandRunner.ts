@@ -45,7 +45,14 @@ export class OutputCapture {
 }
 
 export class NodeCommandRunner implements CommandRunner {
+  private readonly active = new Set<() => void>();
+
   constructor(private readonly options: NodeRunnerOptions = {}) {}
+
+  /** Stop: kills the process group of every running command. */
+  cancelAll(): void {
+    for (const abort of [...this.active]) abort();
+  }
 
   run(command: string, options: CommandRunOptions): Promise<CommandResult> {
     const prefix = options.usePrefix === false ? "" : (this.options.getPrefix?.().trim() ?? "");
@@ -64,6 +71,7 @@ export class NodeCommandRunner implements CommandRunner {
       const finish = (exitCode: number | null): void => {
         if (settled) return;
         settled = true;
+        this.active.delete(onAbort);
         clearTimeout(timeout);
         clearTimeout(killTimer);
         clearTimeout(settleTimer);
@@ -89,9 +97,11 @@ export class NodeCommandRunner implements CommandRunner {
         settleTimer = setTimeout(() => finish(null), SETTLE_AFTER_KILL_MS);
       };
       const onAbort = (): void => {
+        if (aborted || settled) return;
         aborted = true;
         kill();
       };
+      this.active.add(onAbort);
       const timeout = setTimeout(() => {
         timedOut = true;
         kill();
