@@ -37,6 +37,6 @@ describe("TurnReducer usage", () => {
       finishReason: "stop",
       usage: { inputTokens: 1193, outputTokens: 47, inputTokensBreakdown: { harness: 768, messages: 258 } },
     } as never);
-    expect(r.view.usage).toEqual([{ messageId: "m1", threadId: "main", inputTokens: 1193, messageTokens: 258 }]);
+    expect(r.view.usage).toEqual([{ messageId: "m1", threadId: "main", inputTokens: 1193, outputTokens: 47, messageTokens: 258 }]);
   });
 });

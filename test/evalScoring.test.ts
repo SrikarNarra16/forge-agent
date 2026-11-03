@@ -152,3 +152,26 @@ describe.skipIf(!haveFixture)("scorer on real Flask copies", () => {
   }, 120_000);
 });
 
+
+import { formatSummary, summarize, tableRow, type RunReport } from "../scripts/eval/report";
+
+describe("eval report", () => {
+  const base: RunReport = {
+    runId: "2026-11-03-1-r1", date: "2026-11-03", task: "b", model: "deepseek/flash", accept: "all", pass: false,
+    checks: [{ id: "a", name: "files", pass: true, detail: "" }, { id: "b", name: "pytest", pass: false, detail: "1 failed | x" }],
+    seconds: 61.2, state: "done", modelCalls: 7, toolCalls: { read_file: 3, propose_edit: 3 }, filesRead: [], keyFilesInContext: ["src/flask/cli.py"], keyFilesRead: [],
+    contextItems: 8, contextTokens: 3000, tokens: { input: 1000, output: 200, calls: 7 }, finalMessage: "", errors: [], changedFiles: [],
+  };
+  it("renders a markdown row that cannot break the table", () => {
+    const row = tableRow(base);
+    expect(row.startsWith("| 2026-11-03-1-r1 | 2026-11-03 | B | deepseek/flash | FAIL | a✓ b✗ | 1000/200 |")).toBe(true);
+    expect(row).toContain("key files in context 1/3, read 0/3");
+    expect(row).toContain("1 failed \\| x");
+    expect(row.trim().split("\n")).toHaveLength(1);
+  });
+  it("summarises pass rate per check and overall", () => {
+    const s = summarize([base, { ...base, pass: true, checks: base.checks.map((c) => ({ ...c, pass: true })) }]);
+    expect(s).toEqual({ runs: 2, passed: 1, perCheck: { a: { passed: 2, total: 2 }, b: { passed: 1, total: 2 } } });
+    expect(formatSummary([base])).toMatch(/Overall: 0\/1 runs passed/);
+  });
+});

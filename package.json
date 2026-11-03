@@ -224,7 +224,8 @@
     "package": "vsce package --no-dependencies",
     "vscode:prepublish": "npm run build",
     "tf:start": "bash trueforge/start.sh",
-    "tf:setup": "tsx scripts/tf-setup.ts"
+    "tf:setup": "tsx scripts/tf-setup.ts",
+    "eval": "tsx scripts/eval/run.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

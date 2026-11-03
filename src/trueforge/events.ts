@@ -71,6 +71,7 @@ export interface ModelUsage {
   threadId: string;
   /** All input tokens of the call. */
   inputTokens: number;
+  outputTokens?: number;
   /** The part of them that is conversation messages (excludes harness, instructions and tool definitions). */
   messageTokens?: number;
 }
@@ -172,6 +173,7 @@ export class TurnReducer {
         messageId: message.id,
         threadId: message.threadId,
         inputTokens: input,
+        ...(typeof (usage as { outputTokens?: unknown }).outputTokens === "number" ? { outputTokens: (usage as { outputTokens: number }).outputTokens } : {}),
         ...(typeof breakdown?.messages === "number" ? { messageTokens: breakdown.messages } : {}),
       });
     }

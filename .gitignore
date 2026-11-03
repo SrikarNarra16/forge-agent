@@ -6,3 +6,4 @@ trueforge/models.local.json
 *.vsix
 .vscode-test
 coverage
+eval-output
