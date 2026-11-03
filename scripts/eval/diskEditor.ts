@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { HostError } from "../../src/mcp/host";
 import { applyAccepted, type ApplyIo } from "../../src/review/applyCore";
-import type { CheckpointStore } from "../../src/review/checkpoints";
+import { UserModifiedError, type CheckpointStore, type FileRestorer } from "../../src/review/checkpoints";
+import { hashText } from "../../src/review/hash";
 import { applyRangedEdits } from "../../src/review/hunks";
 import type { ReviewEditor, ReviewHandle, ReviewPresenter } from "../../src/review/reviewHandler";
 import type { ReviewSession } from "../../src/review/session";
@@ -45,6 +46,24 @@ export function diskReviewEditor(root: string, checkpoints: CheckpointStore): Re
   };
 }
 
+/** Non-interactive restorer used by Stop in the eval harness (same rules as VscodeRestorer(host, false)). */
+export function diskRestorer(root: string): FileRestorer {
+  const read = async (p: string): Promise<string | undefined> => readFile(join(root, p), "utf8").catch(() => undefined);
+  return {
+    async restoreText(p, text, expected) {
+      const current = await read(p);
+      if (expected !== undefined && current !== undefined && hashText(current) !== expected) throw new UserModifiedError(p);
+      await writeFile(join(root, p), text, "utf8");
+    },
+    async deleteFile(p, expected) {
+      const current = await read(p);
+      if (current === undefined) return;
+      if (expected !== undefined && hashText(current) !== expected) throw new UserModifiedError(p);
+      await rm(join(root, p), { force: true });
+    },
+  };
+}
+
 export type AcceptMode = "all" | "first-only";
 
 /** Decides a review the way a user would: accept every hunk, or only the first hunk of each file and reject the rest. */
@@ -57,11 +76,11 @@ export function decide(session: ReviewSession, mode: AcceptMode): void {
   session.apply();
 }
 
-export function autoPresenter(mode: AcceptMode, onPresent?: (session: ReviewSession) => void): ReviewPresenter {
+export function autoPresenter(mode: AcceptMode, onPresent?: (session: ReviewSession) => void, delayMs = 10): ReviewPresenter {
   return {
     present(session): ReviewHandle {
       onPresent?.(session);
-      const timer = setTimeout(() => decide(session, mode), 10);
+      const timer = setTimeout(() => decide(session, mode), delayMs);
       return { close: () => clearTimeout(timer) };
     },
   };

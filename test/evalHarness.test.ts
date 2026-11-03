@@ -171,3 +171,42 @@ describe("context -> edit link", () => {
     expect(formatContextLink([{ runId: "r2", changedFiles: [], contextPaths: [] } as never])).toContain("(no files changed)");
   });
 });
+
+import { randomCuts } from "../scripts/eval/cuts";
+import { diskRestorer } from "../scripts/eval/diskEditor";
+
+describe("cancel-at random cut points", () => {
+  it("is deterministic per seed, stratified over the run's phases and bounded", () => {
+    const a = randomCuts(5, 7, "b");
+    expect(randomCuts(5, 7, "b")).toEqual(a);
+    expect(randomCuts(5, 8, "b")).not.toEqual(a);
+    expect([...a].sort((x, y) => x - y).map((v, i) => v >= [2, 8, 20, 40, 80][i]! && v <= [8, 20, 40, 80, 150][i]!)).toEqual([true, true, true, true, true]);
+    expect(randomCuts(5, 1, "a").every((v) => v >= 1 && v <= 30)).toBe(true);
+    expect(randomCuts(0, 1, "b")).toEqual([]);
+  });
+});
+
+describe("diskRestorer (eval Stop)", () => {
+  it("restores, deletes, and refuses to overwrite a file the user changed", async () => {
+    const { mkdtemp, readFile, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { hashText } = await import("../src/review/hash");
+    const root = await mkdtemp(join(tmpdir(), "restorer-"));
+    try {
+      const r = diskRestorer(root);
+      await writeFile(join(root, "a.py"), "new\n");
+      await r.restoreText("a.py", "old\n", hashText("new\n"));
+      expect(await readFile(join(root, "a.py"), "utf8")).toBe("old\n");
+      await writeFile(join(root, "a.py"), "user typed\n");
+      await expect(r.restoreText("a.py", "old\n", hashText("new\n"))).rejects.toThrow(/changed after Forge/);
+      expect(await readFile(join(root, "a.py"), "utf8")).toBe("user typed\n");
+      await writeFile(join(root, "n.rst"), "created\n");
+      await r.deleteFile("n.rst", hashText("created\n"));
+      await expect(readFile(join(root, "n.rst"), "utf8")).rejects.toThrow();
+      await r.deleteFile("missing.rst", undefined); // already gone
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

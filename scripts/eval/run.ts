@@ -33,8 +33,11 @@ import { FORGE_EDITOR_SERVER, FORGE_EXTRAS_SERVER, createClient, describeError, 
 import type { StreamEvent, TurnView } from "../../src/trueforge/events";
 import { createSdkTurnClient } from "../../src/trueforge/sdkAdapter";
 import { DiskHost } from "../diskHost";
-import { autoPresenter, diskReviewEditor, type AcceptMode } from "./diskEditor";
+import { autoPresenter, diskRestorer, diskReviewEditor, type AcceptMode } from "./diskEditor";
+import { RunRegistry } from "../../src/trueforge/runRegistry";
+import { CommandTickets } from "../../src/mcp/commandTickets";
 import { HarnessCommandApproval } from "./commands";
+import { randomCuts } from "./cuts";
 import { agentName, assertThrowaway, extrasName, mcpName, snapshotDiff, type Snapshot } from "./guard";
 import { DEFAULT_RUN_LIMIT, DEFAULT_TOKEN_LIMIT, appendLedger, checkLimits, readLedger, totalsOf } from "./ledger";
 import { OutageGuard, ProviderOutage, classifyFailure, withRetries } from "./retry";
@@ -124,6 +127,8 @@ interface RunContext {
   model: string | undefined;
   accept: AcceptMode;
   timeoutSeconds: number;
+  /** Cancel mode: press Stop (the real controller.stop()) this many seconds into the run, then check the workspace. */
+  cancelAfter?: number | undefined;
   runNumber: number;
   log: (m: string) => void;
   /** Resources this process created, so a signal handler can clean the current run. */
@@ -198,20 +203,25 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
     const venvBin = join(FIXTURE_PYTHON, "..");
     // The product mechanism: forge.commandPrefix. It makes `pytest`/`flask` resolve to the fixture venv and the copy's src/.
     const runner = new NodeCommandRunner({ getPrefix: () => `export PATH='${venvBin}':"$PATH" PYTHONPATH='${join(ws?.root ?? "", "src")}' PYTHONDONTWRITEBYTECODE=1 &&` });
+    const registry = new RunRegistry();
+    const tickets = new CommandTickets();
+    const cancelMode = c.cancelAfter !== undefined;
     const reviewHandler = new ReviewApprovalHandler({
       editor: diskReviewEditor(ws.root, checkpoints),
-      presenter: autoPresenter(c.accept),
+      // in cancel mode the "user" takes 4 s per review, so a cut can land while a diff is open
+      presenter: autoPresenter(c.accept, undefined, cancelMode ? 4000 : 10),
       decisions,
       tracker,
       getRunId: () => `eval-${runId}`,
+      registry,
     });
     const token = generateToken();
-    server = await startMcpServer({ token, host, events, decisions, index, commands: runner, editor: { reveal: () => Promise.resolve() } });
+    server = await startMcpServer({ token, host, events, decisions, index, commands: runner, editor: { reveal: () => Promise.resolve() }, run: { isCancelled: () => registry.isCancelled(), signal: () => registry.signal }, tickets });
     const handler = new RoutingApprovalHandler(
       new Map<string, ApprovalHandler>([
         ["propose_edit", reviewHandler],
         ["create_file", reviewHandler],
-        ["run_command", new CommandApprovalHandler({ inner: harnessCommands, getRunId: () => `eval-${runId}`, getRoot: () => host.rootPath() })],
+        ["run_command", new CommandApprovalHandler({ inner: harnessCommands, getRunId: () => `eval-${runId}`, getRoot: () => host.rootPath(), tickets, registry })],
       ]),
       denyUnknown,
     );
@@ -245,7 +255,20 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
 
     const sink = new Sink();
     const redact = (t: string): string => t.split(token).join("<token>");
-    const controller = new AgentController({ client: recording(createSdkTurnClient(() => client), capture, redact), agentName: agent, ui: sink, approvals: handler });
+    const controller = new AgentController({ client: recording(createSdkTurnClient(() => client), capture, redact), agentName: agent, ui: sink, approvals: handler, getRunId: () => `eval-${runId}`, registry, log: (m) => capture.lines.push(JSON.stringify({ log: m })), cancel: {
+      cancelWork: () => {
+        runner.cancelAll();
+        decisions.clear();
+        tickets.clear();
+      },
+      settle: () => reviewHandler.idle(),
+      rollbackEnabled: () => true,
+      rollback: async (id) => {
+        const r = await checkpoints.rollbackRun(id, diskRestorer(ws?.root ?? ""));
+        return { restored: r.restored, skipped: r.skipped, failed: r.failed };
+      },
+      changedFiles: (id) => checkpoints.filesOf(id),
+    } });
     let sendText: string;
     let display: string;
     let options: Parameters<AgentController["send"]>[1];
@@ -269,9 +292,23 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
       options = { display: turn.display, purpose: "eval-task-b" };
     }
 
-    const timer = setTimeout(() => void controller.stop(), c.timeoutSeconds * 1000);
+    const states: string[] = [];
+    controller.runState.onChange((st) => states.push(st));
+    let stopClickedAt = 0;
+    let stopDoneMs = 0;
+    let cutPhase = "";
+    const timer = setTimeout(
+      () => {
+        stopClickedAt = Date.now();
+        const calls = sink.view?.toolCalls ?? [];
+        cutPhase = controller.state === "awaitingApproval" ? "awaiting approval / review open" : calls.length === 0 ? "before the first tool call" : `after ${calls.length} tool call(s), last: ${calls.at(-1)?.name ?? "?"}`;
+        void controller.stop().then(() => (stopDoneMs = Date.now() - stopClickedAt));
+      },
+      (c.cancelAfter ?? c.timeoutSeconds) * 1000,
+    );
     const result = await controller.send(sendText, options);
     clearTimeout(timer);
+    const sendReturnedMs = stopClickedAt > 0 ? Date.now() - stopClickedAt : 0;
     if (controller.sessionId) sessions.push(controller.sessionId);
     view = sink.view;
     state = result.ok ? result.state : "busy";
@@ -279,12 +316,23 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
     errors.push(...sink.notices.filter((n) => n.startsWith("error")));
     finalMessage = view?.messages.filter((m) => m.threadId === "main").map((m) => m.text).filter(Boolean).at(-1) ?? "";
 
-    if (task === "b") {
+    if (cancelMode) {
+      const dirty = (await changedFiles(ws.root)).join(", ");
+      const cancelled = state === "cancelled" && stopClickedAt > 0;
+      checks = [
+        { id: "a", name: "Stop pressed mid-run and the run ended 'cancelled'", pass: cancelled, detail: cancelled ? `cut ${c.cancelAfter}s into the run: ${cutPhase}; states ${states.join(">")}` : `run ended '${state}' before the cut at ${c.cancelAfter}s (inconclusive)` },
+        { id: "b", name: "temp workspace identical to the pristine checkout (git status clean)", pass: dirty === "", detail: dirty === "" ? `clean${result.ok && result.detail ? `; ${result.detail.slice(0, 160)}` : ""}` : `dirty: ${dirty}` },
+        { id: "c", name: "Stop completed and send() returned within 1 s of the click", pass: cancelled && stopDoneMs > 0 && stopDoneMs < 1000 && sendReturnedMs < 1000, detail: `stop() took ${stopDoneMs} ms, send() returned ${sendReturnedMs} ms after the click` },
+      ];
+      changed = await changedFiles(ws.root);
+      log(`    cut phase: ${cutPhase || "(run ended first)"}`);
+      log(checks.map((k) => `    ${k.pass ? "PASS" : "FAIL"} (${k.id}) ${k.name} [${k.detail}]`).join("\n"));
+    } else if (task === "b") {
       const score = await scoreTaskB({ root: ws.root, python: ws.python });
       checks = score.checks;
       changed = score.changedFiles;
       log(formatScore(score).split("\n").map((l) => `    ${l}`).join("\n"));
-    } else {
+    } else if (!cancelMode) {
       const out = await exec(ws.python, [join(ROOT, "scripts", "task_a_check.py"), "--installed"], { cwd: ws.root, env: pythonEnv(ws.root) }).then(
         (r) => r.stdout,
         (e: { stdout?: string }) => e.stdout ?? "",
@@ -349,14 +397,22 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
   return report;
 }
 
+const log0 = (m: string): void => console.log(m);
+
 async function main(): Promise<number> {
   const task = arg("--task");
   if (task !== "a" && task !== "b") throw new Error("usage: npm run eval -- --task a|b [--model <name>] [--runs N<=10] [--accept all|first-only] [--timeout seconds]");
-  const runs = Number(arg("--runs", "1"));
+  const cancelRandom = arg("--cancel-at") === "random";
+  const cancelAfterArg = arg("--cancel-after");
+  if (cancelAfterArg !== undefined && (!Number.isFinite(Number(cancelAfterArg)) || Number(cancelAfterArg) <= 0)) throw new Error("--cancel-after must be a number of seconds > 0");
+  const runs = Number(arg("--runs", cancelRandom ? "5" : "1"));
   if (!Number.isInteger(runs) || runs < 1 || runs > MAX_RUNS) throw new Error(`--runs must be a whole number from 1 to ${MAX_RUNS}`);
   const accept = arg("--accept", "all");
   if (accept !== "all" && accept !== "first-only") throw new Error("--accept must be all or first-only");
   const model = arg("--model");
+  const seed = Number(arg("--seed", "7"));
+  const cuts = cancelRandom ? randomCuts(runs, seed, task) : [];
+  if (cancelRandom) log0(`Cancel trials: Stop pressed at ${cuts.map((c) => `${c}s`).join(", ")} (seed ${seed})`);
   const timeoutSeconds = Number(arg("--timeout", task === "b" ? "600" : "180"));
   const log = (m: string): void => console.log(m);
   const client = createClient(BASE_URL);
@@ -399,7 +455,7 @@ async function main(): Promise<number> {
   let stopped: string | undefined;
   for (let n = 1; n <= runs && stopped === undefined; n++) {
     const attempts = await withRetries(
-      (attempt) => runOnce({ client, task, model, accept, timeoutSeconds, runNumber: n, log, cleanups }, attempt).then(async (report) => {
+      (attempt) => runOnce({ client, task, model, accept, timeoutSeconds, cancelAfter: cancelRandom ? cuts[n - 1] : cancelAfterArg !== undefined ? Number(cancelAfterArg) : undefined, runNumber: n, log, cleanups }, attempt).then(async (report) => {
         const entry = { runId: report.runId, task, model: report.model, attempt, input: report.tokens?.input ?? 0, output: report.tokens?.output ?? 0, at: new Date().toISOString() };
         await appendLedger(ledgerFile, entry);
         outage.record(!report.pass && report.providerError);
