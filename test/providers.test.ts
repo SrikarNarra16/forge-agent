@@ -10,14 +10,16 @@ async function exampleFile(): Promise<unknown> {
 describe("models.example.json", () => {
   it("parses and lists deepseek, groq and the demo-only broken-endpoint provider", async () => {
     const providers = parseProvidersFile(await exampleFile());
-    expect(providers.map((p) => p.name)).toEqual(["deepseek", "groq", "broken-endpoint"]);
+    expect(providers.map((p) => p.name)).toEqual(["deepseek", "groq", "broken-endpoint", "badkey-deepseek"]);
     expect(providers.find((p) => p.name === "broken-endpoint")?.demoOnly).toBe(true);
+    expect(providers.find((p) => p.name === "badkey-deepseek")?.demoOnly).toBe(true);
   });
 
   it("skips demo-only providers unless --with-broken", async () => {
     const providers = parseProvidersFile(await exampleFile());
     expect(selectProviders(providers, { withBroken: false }).map((p) => p.name)).toEqual(["deepseek", "groq"]);
-    expect(selectProviders(providers, { withBroken: true })).toHaveLength(3);
+    expect(selectProviders(providers, { withBroken: true })).toHaveLength(4);
+    expect(selectProviders(providers, { withBroken: false, onlyDemo: true }).map((p) => p.name)).toEqual(["broken-endpoint", "badkey-deepseek"]);
   });
 });
 
@@ -37,11 +39,22 @@ describe("keys are never read from the file", () => {
     expect(missing).toEqual([{ provider: "groq", env: "GROQ_API_KEY" }]);
   });
 
-  it("uses the fake key only for the demo-only provider", async () => {
+  it("demo-only providers always get the built-in fake key and need no environment variable (a real key never reaches them)", async () => {
     const providers = parseProvidersFile(await exampleFile());
-    const { keys, missing } = resolveApiKeys(providers, { DEEPSEEK_API_KEY: "a", GROQ_API_KEY: "b" });
+    const { keys, missing } = resolveApiKeys(providers, { DEEPSEEK_API_KEY: "real-ds", GROQ_API_KEY: "b", BROKEN_ENDPOINT_FAKE_KEY: "real-looking" });
     expect(keys.get("broken-endpoint")).toBe(DEMO_FAKE_KEY);
+    expect(keys.get("badkey-deepseek")).toBe(DEMO_FAKE_KEY);
+    expect(keys.get("deepseek")).toBe("real-ds");
+    expect(DEMO_FAKE_KEY).toMatch(/NOT-A-REAL-KEY/);
     expect(missing).toEqual([]);
+    // with no environment at all only the real providers are reported missing
+    expect(resolveApiKeys(providers, {}).missing.map((m) => m.provider)).toEqual(["deepseek", "groq"]);
+  });
+
+  it("a non-demo provider without apiKeyEnv is rejected", async () => {
+    const file = (await exampleFile()) as { providers: Array<Record<string, unknown>> };
+    const { apiKeyEnv: _drop, ...noEnv } = file.providers[0] as Record<string, unknown>;
+    expect(() => parseProvidersFile({ providers: [noEnv] })).toThrow(/apiKeyEnv is required/);
   });
 });
 

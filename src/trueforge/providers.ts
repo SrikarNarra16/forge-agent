@@ -7,8 +7,8 @@ import { z } from "zod";
  * request. Shared with tests, so it must not import the vscode API.
  */
 
-/** Fake key used only for the opt-in demo provider when its env var is unset (not a secret). */
-export const DEMO_FAKE_KEY = "sk-fake-key-for-broken-endpoint-demo";
+/** Obviously fake key used for every opt-in demo provider (not a secret). */
+export const DEMO_FAKE_KEY = "sk-fake-key-for-demo-providers-NOT-A-REAL-KEY";
 
 const modelSchema = z.strictObject({
   name: z.string(),
@@ -25,10 +25,11 @@ const providerSchema = z.strictObject({
   name: z.string(),
   base_url: z.url(),
   /** Name of the environment variable holding the key. Keys themselves are rejected by this strict schema. */
-  apiKeyEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, "must be an environment variable name"),
+  apiKeyEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, "must be an environment variable name").optional(),
+  /** Demo-only providers (Task C) never use a real key: they always get DEMO_FAKE_KEY and need no environment variable. */
   demoOnly: z.boolean().optional(),
   models: z.array(modelSchema).min(1),
-});
+}).refine((p) => p.demoOnly === true || p.apiKeyEnv !== undefined, { message: "apiKeyEnv is required (names the environment variable that holds the key)", path: ["apiKeyEnv"] });
 
 const fileSchema = z.strictObject({
   _comment: z.string().optional(),
@@ -45,8 +46,9 @@ export function parseProvidersFile(json: unknown): ProviderEntry[] {
   return parsed.data.providers;
 }
 
-/** Drops demo-only providers (e.g. broken-endpoint) unless explicitly requested. */
-export function selectProviders(providers: readonly ProviderEntry[], opts: { withBroken: boolean }): ProviderEntry[] {
+/** Drops demo-only providers (e.g. broken-endpoint) unless explicitly requested; `onlyDemo` keeps ONLY them (no real keys needed). */
+export function selectProviders(providers: readonly ProviderEntry[], opts: { withBroken: boolean; onlyDemo?: boolean }): ProviderEntry[] {
+  if (opts.onlyDemo) return providers.filter((p) => p.demoOnly === true);
   return providers.filter((p) => opts.withBroken || p.demoOnly !== true);
 }
 
@@ -60,10 +62,14 @@ export function resolveApiKeys(providers: readonly ProviderEntry[], env: Readonl
   const keys = new Map<string, string>();
   const missing: ResolvedKeys["missing"] = [];
   for (const p of providers) {
-    const value = env[p.apiKeyEnv]?.trim();
+    if (p.demoOnly) {
+      keys.set(p.name, DEMO_FAKE_KEY); // never read the environment for a demo provider: a real key must not reach a demo endpoint
+      continue;
+    }
+    const envName = p.apiKeyEnv ?? "";
+    const value = env[envName]?.trim();
     if (value) keys.set(p.name, value);
-    else if (p.demoOnly) keys.set(p.name, DEMO_FAKE_KEY);
-    else missing.push({ provider: p.name, env: p.apiKeyEnv });
+    else missing.push({ provider: p.name, env: envName });
   }
   return { keys, missing };
 }

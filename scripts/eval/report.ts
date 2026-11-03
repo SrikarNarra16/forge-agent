@@ -43,6 +43,8 @@ export interface RunReport {
   usedScout: boolean;
   /** Every run_command the agent issued with the harness verdict. */
   commands: Array<{ command: string; approved: boolean; reason?: string }>;
+  /** Model-chain runs: what the chain did and how long the fallback took. */
+  chain?: { models: string[]; events: string[]; timeToFallbackMs?: number; dirtyAtSwitch?: string };
   changedFiles: string[];
 }
 
@@ -67,6 +69,7 @@ export function tableRow(r: RunReport): string {
     r.task === "b" ? `key files in context ${r.keyFilesInContext.length}/3, read ${r.keyFilesRead.length}/3` : "",
     r.accept !== "all" ? `accept=${r.accept}` : "",
     r.providerError ? "PROVIDER ERROR" : "",
+    r.chain ? `chain ${r.chain.models.join(" > ")}${r.chain.timeToFallbackMs !== undefined ? `; fallback after ${(r.chain.timeToFallbackMs / 1000).toFixed(1)} s` : ""}` : "",
     r.attempts > 1 ? `${r.attempts} attempts (${r.attemptKinds.join(">")})` : "",
     r.task === "b" ? `tests ${r.ranTests ? "yes" : "no"}, deferred ${r.usedDeferredLoading ? "yes" : "no"}, scout ${r.usedScout ? "yes" : "no"}` : "",
     ...r.checks.filter((c) => !c.pass).map((c) => `FAIL ${c.id}: ${c.detail.slice(0, 80)}`),

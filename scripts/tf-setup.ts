@@ -3,7 +3,9 @@
  * trueforge/models.local.json (or models.example.json): model providers (PUT = create-or-replace)
  * and, when our MCP server is registered, the agents from agents/*.json.
  * API keys come only from the environment variables named by `apiKeyEnv`; they are never printed.
- * Flags: --with-broken (also register the demo-only broken-endpoint provider), --base-url <url>.
+ * Flags: --with-broken (also register the demo-only providers broken-endpoint and badkey-deepseek),
+ *        --only-demo (register ONLY those two: needs no API keys and touches no other provider or agent),
+ *        --base-url <url>.
  */
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -39,7 +41,8 @@ async function readFirst(paths: readonly string[]): Promise<{ path: string; text
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
-  const withBroken = args.includes("--with-broken");
+  const onlyDemo = args.includes("--only-demo");
+  const withBroken = args.includes("--with-broken") || onlyDemo;
   const baseUrl = normalizeBaseUrl(flagValue(args, "--base-url") ?? process.env["TRUEFORGE_BASE_URL"] ?? "http://localhost:8790");
   const client = createClient(baseUrl);
 
@@ -54,9 +57,9 @@ async function main(): Promise<number> {
 
   const file = await readFirst([join(root, "trueforge", "models.local.json"), join(root, "trueforge", "models.example.json")]);
   console.log(`Providers file: trueforge/${file.path.split("/").pop()}`);
-  const providers = selectProviders(parseProvidersFile(JSON.parse(file.text) as unknown), { withBroken });
+  const providers = selectProviders(parseProvidersFile(JSON.parse(file.text) as unknown), { withBroken, onlyDemo });
   const skipped = parseProvidersFile(JSON.parse(file.text) as unknown).length - providers.length;
-  if (skipped > 0) console.log(`Skipping ${skipped} demo-only provider(s) (pass --with-broken to include).`);
+  if (skipped > 0 && !onlyDemo) console.log(`Skipping ${skipped} demo-only provider(s) (pass --with-broken to include).`);
 
   const { keys, missing } = resolveApiKeys(providers, process.env);
   if (missing.length > 0) {
@@ -85,6 +88,16 @@ async function main(): Promise<number> {
       failures++;
       console.error(`provider ${provider.name}: FAILED: ${describeError(err)}`);
     }
+  }
+
+  if (onlyDemo) {
+    try {
+      const models = await client.models.list();
+      console.log(`Models available in TrueForge: ${models.data.map((m) => m.name).join(", ") || "(none)"}`);
+    } catch (err) {
+      console.error(`Could not list models: ${describeError(err)}`);
+    }
+    return failures > 0 ? 1 : 0;
   }
 
   // Agents can only be saved once the MCP server they reference is registered; the extension does

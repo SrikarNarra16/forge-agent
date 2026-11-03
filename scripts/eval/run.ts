@@ -11,7 +11,7 @@
  * forge-inline), cleans them up after the run (also on errors and signals), and the TrueForge resources are
  * compared before and after the whole invocation. At most 10 runs per invocation.
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -38,6 +38,8 @@ import { RunRegistry } from "../../src/trueforge/runRegistry";
 import { CommandTickets } from "../../src/mcp/commandTickets";
 import { HarnessCommandApproval } from "./commands";
 import { randomCuts } from "./cuts";
+import { parseChainArgs, expectsExhaustion } from "./chainArgs";
+import type { ChainEvent } from "../../src/trueforge/modelChain";
 import { agentName, assertThrowaway, extrasName, mcpName, snapshotDiff, type Snapshot } from "./guard";
 import { DEFAULT_RUN_LIMIT, DEFAULT_TOKEN_LIMIT, appendLedger, checkLimits, readLedger, totalsOf } from "./ledger";
 import { OutageGuard, ProviderOutage, classifyFailure, withRetries } from "./retry";
@@ -77,6 +79,15 @@ class Sink implements UiSink {
     this.notices.push(`${level}: ${text}`);
   }
   onReset(): void {}
+  readonly chainEvents: ChainEvent[] = [];
+  /** Result of `git status` in the temp copy at the moment the chain switched models (must be empty). */
+  dirtyAtSwitch: string | undefined;
+  checkWorkspace: (() => string) | undefined;
+  onChain(event: ChainEvent): void {
+    this.chainEvents.push(event);
+    if (event.kind === "switched" && this.dirtyAtSwitch === undefined) this.dirtyAtSwitch = this.checkWorkspace?.() ?? "";
+  }
+  onAttemptDiscarded(): void {}
 }
 
 class Capture {
@@ -129,6 +140,8 @@ interface RunContext {
   timeoutSeconds: number;
   /** Cancel mode: press Stop (the real controller.stop()) this many seconds into the run, then check the workspace. */
   cancelAfter?: number | undefined;
+  /** Model chain (names, primary first); the controller falls back through it exactly like the product. */
+  chain?: string[] | undefined;
   runNumber: number;
   log: (m: string) => void;
   /** Resources this process created, so a signal handler can clean the current run. */
@@ -188,6 +201,8 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
   let finalMessage = "";
   let view: TurnView | undefined;
   let model = c.model ?? "(agent file default)";
+  let timeToFallbackMs: number | undefined;
+  let sinkRef: Sink | undefined;
 
   try {
     ws = await createWorkspace();
@@ -254,8 +269,10 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
     });
 
     const sink = new Sink();
+    sinkRef = sink;
+    sink.checkWorkspace = () => execFileSync("git", ["status", "--porcelain", "-uall"], { cwd: ws?.root, encoding: "utf8" }).trim();
     const redact = (t: string): string => t.split(token).join("<token>");
-    const controller = new AgentController({ client: recording(createSdkTurnClient(() => client), capture, redact), agentName: agent, ui: sink, approvals: handler, getRunId: () => `eval-${runId}`, registry, log: (m) => capture.lines.push(JSON.stringify({ log: m })), cancel: {
+    const controller = new AgentController({ client: recording(createSdkTurnClient(() => client), capture, redact), agentName: agent, ui: sink, approvals: handler, getRunId: () => `eval-${runId}`, registry, ...(c.chain ? { chain: { models: () => c.chain ?? [], stall: () => ({ firstMs: 45000, idleMs: 90000 }), sideEffects: (id: string | undefined) => ({ files: id ? checkpoints.filesOf(id) : [], commands: harnessCommands.records.filter((k) => k.approved).map((k) => k.command) }), sessionUrl: (id: string) => `${BASE_URL}/sessions/${id}` } } : {}), log: (m) => capture.lines.push(JSON.stringify({ log: m })), cancel: {
       cancelWork: () => {
         runner.cancelAll();
         decisions.clear();
@@ -339,10 +356,28 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
       );
       const failing = out.split("\n").filter((l) => l.startsWith("FAIL")).map((l) => l.replace(/^FAIL\s+/, ""));
       changed = await changedFiles(ws.root);
-      checks = [
-        { id: "a", name: "task_a_check.py (19 behaviour + docstring checks)", pass: /RESULT: PASS/.test(out), detail: failing.join("; ").slice(0, 200) || "ok" },
-        { id: "b", name: "only src/flask/helpers.py changed", pass: changed.length === 1 && changed[0] === HELPERS, detail: changed.join(", ") || "nothing changed" },
-      ];
+      const switched = sink.chainEvents.find((e) => e.kind === "switched");
+      if (c.chain && expectsExhaustion(c.chain)) {
+        // every model is a demo failure: the correct outcome is a clear error and an untouched workspace
+        const message = sink.notices.find((n) => n.includes("No model could answer")) ?? "";
+        checks = [
+          { id: "a", name: "ended with a clear error naming every model (no hang, no crash)", pass: state === "error" && c.chain.every((m) => message.includes(m)), detail: message ? message.slice(0, 220) : `state '${state}', no exhausted message` },
+          { id: "b", name: "workspace pristine (git status clean)", pass: changed.length === 0, detail: changed.join(", ") || "clean" },
+          { id: "c", name: "the editor was told (chain event 'exhausted')", pass: sink.chainEvents.some((e) => e.kind === "exhausted"), detail: sink.chainEvents.map((e) => e.kind).join(",") || "no chain events" },
+        ];
+      } else {
+        checks = [
+          { id: "a", name: "task_a_check.py (19 behaviour + docstring checks)", pass: /RESULT: PASS/.test(out), detail: failing.join("; ").slice(0, 200) || "ok" },
+          { id: "b", name: "only src/flask/helpers.py changed", pass: changed.length === 1 && changed[0] === HELPERS, detail: changed.join(", ") || "nothing changed" },
+          ...(c.chain && c.chain.length > 1
+            ? [
+                { id: "c", name: "fell back automatically to the next model", pass: switched !== undefined, detail: switched ? `${switched.text}` : `no switch happened (events: ${sink.chainEvents.map((e) => e.kind).join(",") || "none"})` },
+                { id: "d", name: "workspace unchanged by the failed attempt (checked at the moment of the switch)", pass: sink.dirtyAtSwitch === "", detail: sink.dirtyAtSwitch === undefined ? "no switch" : sink.dirtyAtSwitch === "" ? "clean" : `dirty: ${sink.dirtyAtSwitch.replace(/\n/g, ", ")}` },
+              ]
+            : []),
+        ];
+      }
+      timeToFallbackMs = switched?.afterMs;
       log(checks.map((k) => `    ${k.pass ? "PASS" : "FAIL"} (${k.id}) ${k.name} [${k.detail}]`).join("\n"));
     }
   } catch (err) {
@@ -383,6 +418,7 @@ async function runOnce(c: RunContext, attempt: number): Promise<RunReport> {
     attemptKinds: [],
     ...deriveSignals(view),
     commands: harnessCommands.records,
+    ...(c.chain ? { chain: { models: c.chain, events: sinkRef?.chainEvents.map((e) => `${e.kind}: ${e.text}`) ?? [], ...(timeToFallbackMs !== undefined ? { timeToFallbackMs } : {}), ...(sinkRef?.dirtyAtSwitch !== undefined ? { dirtyAtSwitch: sinkRef.dirtyAtSwitch } : {}) } } : {}),
     changedFiles: changed,
   };
   log(`    ${report.pass ? "PASS" : "FAIL"} in ${report.seconds.toFixed(0)}s; state ${state}; ${report.modelCalls} model calls; tools ${JSON.stringify(toolCalls)}`);
@@ -402,6 +438,8 @@ const log0 = (m: string): void => console.log(m);
 async function main(): Promise<number> {
   const task = arg("--task");
   if (task !== "a" && task !== "b") throw new Error("usage: npm run eval -- --task a|b [--model <name>] [--runs N<=10] [--accept all|first-only] [--timeout seconds]");
+  const chainFlag = arg("--chain");
+  const failPrimary = process.argv.includes("--fail-primary");
   const cancelRandom = arg("--cancel-at") === "random";
   const cancelAfterArg = arg("--cancel-after");
   if (cancelAfterArg !== undefined && (!Number.isFinite(Number(cancelAfterArg)) || Number(cancelAfterArg) <= 0)) throw new Error("--cancel-after must be a number of seconds > 0");
@@ -410,6 +448,8 @@ async function main(): Promise<number> {
   const accept = arg("--accept", "all");
   if (accept !== "all" && accept !== "first-only") throw new Error("--accept must be all or first-only");
   const model = arg("--model");
+  const chain = parseChainArgs({ chain: chainFlag, failPrimary, model, defaultModel: "deepseek/flash" });
+  if (chain) log0(`Model chain: ${chain.join(" -> ")}${expectsExhaustion(chain) ? "  (every model is a demo failure: expecting a clear error and a pristine workspace)" : ""}`);
   const seed = Number(arg("--seed", "7"));
   const cuts = cancelRandom ? randomCuts(runs, seed, task) : [];
   if (cancelRandom) log0(`Cancel trials: Stop pressed at ${cuts.map((c) => `${c}s`).join(", ")} (seed ${seed})`);
@@ -455,7 +495,7 @@ async function main(): Promise<number> {
   let stopped: string | undefined;
   for (let n = 1; n <= runs && stopped === undefined; n++) {
     const attempts = await withRetries(
-      (attempt) => runOnce({ client, task, model, accept, timeoutSeconds, cancelAfter: cancelRandom ? cuts[n - 1] : cancelAfterArg !== undefined ? Number(cancelAfterArg) : undefined, runNumber: n, log, cleanups }, attempt).then(async (report) => {
+      (attempt) => runOnce({ client, task, model, accept, timeoutSeconds, chain, cancelAfter: cancelRandom ? cuts[n - 1] : cancelAfterArg !== undefined ? Number(cancelAfterArg) : undefined, runNumber: n, log, cleanups }, attempt).then(async (report) => {
         const entry = { runId: report.runId, task, model: report.model, attempt, input: report.tokens?.input ?? 0, output: report.tokens?.output ?? 0, at: new Date().toISOString() };
         await appendLedger(ledgerFile, entry);
         outage.record(!report.pass && report.providerError);
