@@ -7,6 +7,7 @@ import { registerGetSymbols } from "./getSymbols";
 import { registerListDir } from "./listDir";
 import { registerPing } from "./ping";
 import { registerReadFile } from "./readFile";
+import { registerRunCommand } from "./runCommand";
 import { registerRepoMap } from "./repoMap";
 import { registerSearchCode } from "./searchCode";
 
@@ -19,7 +20,10 @@ import { registerSearchCode } from "./searchCode";
  */
 export const WRITE_TOOL_NAMES = ["propose_edit", "create_file"] as const;
 export const READ_TOOL_NAMES = ["ping", "list_dir", "repo_map", "search_code", "read_file", "get_symbols", "get_diagnostics"] as const;
-export const TOOL_NAMES = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES] as const;
+export const COMMAND_TOOL_NAMES = ["run_command"] as const;
+/** Every tool the user must approve, by NAME in the agent spec. */
+export const GATED_TOOL_NAMES = [...WRITE_TOOL_NAMES, ...COMMAND_TOOL_NAMES] as const;
+export const TOOL_NAMES = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES, ...COMMAND_TOOL_NAMES] as const;
 
 export function registerTools(server: McpServer, host: WorkspaceHost, deps: ToolDeps): void {
   registerPing(server);
@@ -30,4 +34,5 @@ export function registerTools(server: McpServer, host: WorkspaceHost, deps: Tool
   registerGetSymbols(server, host, deps);
   registerGetDiagnostics(server, host, deps);
   registerEditTools(server, deps);
+  registerRunCommand(server, host, deps);
 }

@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { checkBearer, type BearerToken } from "./auth";
 import type { ContextIndex } from "../context/indexer";
+import type { CommandRunner, TerminalSink } from "./commandRunner";
 import type { DecisionStore } from "./decisions";
 import { McpEvents } from "./events";
 import type { WorkspaceHost } from "./host";
@@ -32,6 +33,10 @@ export interface McpServerOptions {
   decisions?: DecisionStore;
   /** Context index used by search_code / repo_map once ready. */
   index?: ContextIndex;
+  /** Runs run_command (the node runner in production, a fake in tests). */
+  commands?: CommandRunner;
+  /** Live command output (Forge: Terminal). */
+  terminal?: TerminalSink;
   budgets?: Partial<ToolBudgets>;
   /** Receives server and tool log lines (tool name, duration, argument summary). Never the token, request bodies or file contents. */
   log?: (message: string) => void;
@@ -85,7 +90,7 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse, ho
 
 export async function startMcpServer(options: McpServerOptions): Promise<McpServerHandle> {
   const { token, host, log } = options;
-  const deps = createToolDeps({ log: (m) => log?.(m), events: options.events ?? new McpEvents(), ...(options.budgets ? { budgets: options.budgets } : {}), ...(options.decisions ? { decisions: options.decisions } : {}), index: options.index });
+  const deps = createToolDeps({ log: (m) => log?.(m), events: options.events ?? new McpEvents(), ...(options.budgets ? { budgets: options.budgets } : {}), ...(options.decisions ? { decisions: options.decisions } : {}), index: options.index, commands: options.commands, terminal: options.terminal });
 
   const httpServer = http.createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { READ_TOOL_NAMES, TOOL_NAMES, WRITE_TOOL_NAMES, registerTools } from "../src/mcp/tools/index";
+import { GATED_TOOL_NAMES, READ_TOOL_NAMES, TOOL_NAMES, registerTools } from "../src/mcp/tools/index";
 import { FIXTURE_FILES, FIXTURE_GITIGNORE, FakeHost, makeRig } from "./helpers/fakeHost";
 
 /** Exercises the tools through a real MCP client/server pair, i.e. what the model's schema validation sees. */
@@ -27,11 +27,11 @@ describe("tools over MCP", () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
     for (const tool of tools) {
-      const isWrite = (WRITE_TOOL_NAMES as readonly string[]).includes(tool.name);
-      expect(tool.annotations?.readOnlyHint, tool.name).toBe(!isWrite);
-      expect(tool.annotations?.destructiveHint, tool.name).toBe(false);
+      const isGated = (GATED_TOOL_NAMES as readonly string[]).includes(tool.name);
+      expect(tool.annotations?.readOnlyHint, tool.name).toBe(!isGated);
+      expect(tool.annotations?.destructiveHint, tool.name).toBe(tool.name === "run_command");
     }
-    expect([...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES].sort()).toEqual([...TOOL_NAMES].sort());
+    expect([...READ_TOOL_NAMES, ...GATED_TOOL_NAMES].sort()).toEqual([...TOOL_NAMES].sort());
   });
 
   it("gives every tool and every parameter a description (this is what the model reads)", async () => {

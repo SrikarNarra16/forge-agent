@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { READ_TOOL_NAMES, TOOL_NAMES, WRITE_TOOL_NAMES } from "../src/mcp/tools/index";
+import { GATED_TOOL_NAMES, READ_TOOL_NAMES, TOOL_NAMES, WRITE_TOOL_NAMES } from "../src/mcp/tools/index";
 import { parseAgentFile } from "../src/trueforge/client";
 
 async function loadJson(file: string): Promise<unknown> {
@@ -14,7 +14,7 @@ describe("parseAgentFile", () => {
     expect(agent.name).toBe("forge-agent");
     expect(agent.spec.model.name).toBe("deepseek/flash");
     expect(agent.spec.mcpServers).toEqual([
-      { name: "forge-editor", enableTools: ["@all"], requireApprovalForTools: ["propose_edit", "create_file"], preload: true },
+      { name: "forge-editor", enableTools: ["@all"], requireApprovalForTools: ["propose_edit", "create_file", "run_command"], preload: true },
     ]);
     expect(agent.spec.config).toEqual({
       iterationLimit: 20,
@@ -27,7 +27,7 @@ describe("parseAgentFile", () => {
   it("gates the write tools BY NAME (never via @write labels) and exactly the ones the server exposes", async () => {
     const agent = parseAgentFile(await loadJson("forge-agent.json"));
     const gated = agent.spec.mcpServers?.[0]?.requireApprovalForTools;
-    expect(gated).toEqual([...WRITE_TOOL_NAMES]);
+    expect(gated).toEqual([...GATED_TOOL_NAMES]);
     expect(gated).not.toContain("@write");
     expect(gated).not.toContain("@all");
     for (const name of READ_TOOL_NAMES) expect(gated).not.toContain(name);
