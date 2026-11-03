@@ -30,6 +30,18 @@
       },
       "generative_ui": {
         "enabled": false
+      },
+      "context_management": {
+        "compaction": {
+          "enabled": true,
+          "trigger": {
+            "type": "input_tokens",
+            "value": 80000
+          }
+        },
+        "large_tool_response": {
+          "enabled": true
+        }
       }
     }
   }

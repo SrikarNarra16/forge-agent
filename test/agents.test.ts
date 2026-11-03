@@ -15,13 +15,25 @@ describe("parseAgentFile", () => {
     expect(agent.spec.model.name).toBe("deepseek/flash");
     expect(agent.spec.mcpServers).toEqual([
       { name: "forge-editor", enableTools: ["@all"], requireApprovalForTools: ["propose_edit", "create_file", "run_command"], preload: true },
+      { name: "forge-editor-extras", enableTools: ["@all"], preload: false },
     ]);
     expect(agent.spec.config).toEqual({
-      iterationLimit: 20,
-      dynamicSubAgents: { enabled: false },
+      iterationLimit: 40,
+      dynamicSubAgents: { enabled: true },
       askUserQuestions: { enabled: false },
       generativeUi: { enabled: false },
+      contextManagement: { compaction: { enabled: true, trigger: { type: "input_tokens", value: 80000 } }, largeToolResponse: { enabled: true } },
     });
+  });
+
+  it("loads the extras server on demand (preload:false), gates nothing in it and teaches git_diff review, the optional scout and tests", async () => {
+    const spec = parseAgentFile(await loadJson("forge-agent.json")).spec;
+    const extras = spec.mcpServers?.find((s) => s.name === "forge-editor-extras");
+    expect(extras?.preload).toBe(false);
+    expect(extras?.requireApprovalForTools).toBeUndefined();
+    const text = spec.instructions ?? "";
+    for (const phrase of ["git_diff from forge-editor-extras", "ONE read-only scout subagent", "path:lines - why", "run the project's own tests for the code you changed with run_command", "Context plan"]) expect(text).toContain(phrase);
+    expect(text).not.toMatch(/deepseek/i); // model-agnostic wording
   });
 
   it("gates the write tools BY NAME (never via @write labels) and exactly the ones the server exposes", async () => {
@@ -71,6 +83,7 @@ describe("agents/forge-inline.json", () => {
       dynamicSubAgents: { enabled: false },
       askUserQuestions: { enabled: false },
       generativeUi: { enabled: false },
+      contextManagement: { compaction: { enabled: true, trigger: { type: "input_tokens", value: 80000 } }, largeToolResponse: { enabled: true } },
     });
   });
 
