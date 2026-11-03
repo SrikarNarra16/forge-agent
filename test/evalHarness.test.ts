@@ -17,6 +17,9 @@ describe("failure classifier", () => {
     "read ECONNRESET",
     "connect ECONNREFUSED 127.0.0.1:8790",
     "Request timed out",
+    "terminated",
+    "[Model Error] Response stream ended without a finish reason.",
+    "other side closed",
   ])("%s is a provider failure", (e) => expect(classifyFailure([e])).toBe("provider"));
   it.each(["old_text not found in file", "Agent needs input of a type Forge doesn't support yet", "propose_edit: User rejected all changes", "Request failed (400): bad request"])("%s is an agent failure", (e) => expect(classifyFailure([e])).toBe("agent"));
   it("is a provider failure if any error is", () => expect(classifyFailure(["x", "Request failed (503)"])).toBe("provider"));

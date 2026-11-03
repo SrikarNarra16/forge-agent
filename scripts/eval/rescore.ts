@@ -6,6 +6,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { RunReport } from "./report";
+import { classifyFailure } from "./retry";
 import { checkUnrelated } from "./score-task-b";
 
 async function main(): Promise<void> {
@@ -17,7 +18,7 @@ async function main(): Promise<void> {
     const before = r.checks.find((c) => c.id === "g");
     const after = checkUnrelated(r.changedFiles);
     const passAfter = r.checks.filter((c) => c.id !== "g").every((c) => c.pass) && after.pass;
-    rows.push(`| ${r.runId} | ${r.model} | g ${before?.pass ? "PASS" : "FAIL"} -> g ${after.pass ? "PASS" : "FAIL"} (${after.detail}) | ${r.pass ? "PASS" : "FAIL"} -> ${passAfter ? "PASS" : "FAIL"} | ${r.providerError ? "provider error" : ""} |`);
+    rows.push(`| ${r.runId} | ${r.model} | g ${before?.pass ? "PASS" : "FAIL"} -> g ${after.pass ? "PASS" : "FAIL"} (${after.detail}) | ${r.pass ? "PASS" : "FAIL"} -> ${passAfter ? "PASS" : "FAIL"} | ${r.providerError ? "provider error" : ""}${!r.pass && classifyFailure(r.errors) === "provider" && !r.providerError ? "reclassified: provider (stream dropped)" : ""} |`);
   }
   console.log("| Run | Model | Check (g) before -> after | Overall before -> after | Note |\n|---|---|---|---|---|");
   console.log(rows.join("\n"));

@@ -35,3 +35,30 @@ Re-scoring every recorded Task B report (`npx tsx scripts/eval/rescore.ts`, from
 | 2026-11-03-62476-r1..r3 | deepseek/flash | PASS -> PASS | FAIL -> FAIL | provider errors (503), nothing edited |
 | 2026-11-03-63115-r1 | deepseek/v4-pro | PASS -> PASS | FAIL -> FAIL | provider error (500), nothing edited |
 | 2026-11-03-77804-r1-a2 | deepseek/flash | FAIL -> PASS (also touched: docs/api.rst) | FAIL -> PASS | the only answered run so far: 7/7 after the correction |
+| 2026-11-03-79515-r1 | 2026-11-03 | B | deepseek/flash | FAIL | a✗ b✓ c✓ d✓ e✓ f✗ g✓ | 335706/8992 | 366s; 19 model calls; search_code×5 get_symbols×1 read_file×16 run_command×3 propose_edit×2; key files in context 3/3, read 3/3; tests yes, deferred no, scout no; FAIL a: changed 2 file(s); missing docs/cli.rst; FAIL f: docs/cli.rst gained no section/entry for `flask config`; error: terminated |
+| 2026-11-03-79515-r2 | 2026-11-03 | B | deepseek/flash | FAIL | a✗ b✓ c✗ d✗ e✗ f✗ g✓ | 61643/1250 | 375s; 7 model calls; repo_map×1 search_code×4 read_file×4 run_command×1; key files in context 3/3, read 3/3; tests no, deferred no, scout no; FAIL a: changed 0 file(s); missing src/flask/cli.py, tests/test_cli.py, docs/cli.rst; FAIL c: config not in the command list; FAIL d: flask config exited 2: Error: No such command 'config'.; FAIL e: new tests do not reference the config command; FAIL f: docs/cli.rst gained no section/entry for `flask config`; error: [Model Error] Response stream ended without a finish reason. |
+| 2026-11-03-79515-r3 | 2026-11-03 | B | deepseek/flash | FAIL | a✗ b✓ c✗ d✗ e✗ f✗ g✓ | n/a | 302s; 1 model calls; no tools; key files in context 3/3, read 0/3; tests no, deferred no, scout no; FAIL a: changed 0 file(s); missing src/flask/cli.py, tests/test_cli.py, docs/cli.rst; FAIL c: config not in the command list; FAIL d: flask config exited 2: Error: No such command 'config'.; FAIL e: new tests do not reference the config command; FAIL f: docs/cli.rst gained no section/entry for `flask config`; error: terminated |
+| 2026-11-03-79515-r4-a3 | 2026-11-03 | B | deepseek/flash | FAIL | a✗ b✓ c✗ d✗ e✗ f✗ g✓ | n/a | 303s; 1 model calls; no tools; key files in context 3/3, read 0/3; 3 attempts (provider>provider>agent); tests no, deferred no, scout no; FAIL a: changed 0 file(s); missing src/flask/cli.py, tests/test_cli.py, docs/cli.rst; FAIL c: config not in the command list; FAIL d: flask config exited 2: Error: No such command 'config'.; FAIL e: new tests do not reference the config command; FAIL f: docs/cli.rst gained no section/entry for `flask config`; error: terminated |
+| 2026-11-03-79515-r5 | 2026-11-03 | B | deepseek/flash | FAIL | a✗ b✓ c✗ d✗ e✗ f✗ g✓ | n/a | 302s; 1 model calls; no tools; key files in context 3/3, read 0/3; tests no, deferred no, scout no; FAIL a: changed 0 file(s); missing src/flask/cli.py, tests/test_cli.py, docs/cli.rst; FAIL c: config not in the command list; FAIL d: flask config exited 2: Error: No such command 'config'.; FAIL e: new tests do not reference the config command; FAIL f: docs/cli.rst gained no section/entry for `flask config`; error: terminated |
+
+## Baseline attempt, flash, Task B x5 (3 Nov 2026): NO USABLE BASELINE — tuning NOT started
+Command: `npm run eval -- --task b --model deepseek/flash --runs 5` (harness before the outage rules). The table rows above (`79515-r1..r5`) say FAIL, but the failures are the provider's:
+
+| Run | What happened | Real model answer? |
+|---|---|---|
+| r1 | 19 model calls, edited cli.py + test_cli.py, ran pytest, then the stream was dropped (`terminated`) after 365 s; docs/cli.rst not yet edited, so (a) and (f) fail | partial (cut off mid-run) |
+| r2 | 7 calls of orientation, then `Response stream ended without a finish reason` | no |
+| r3, r5 | no byte from the model for ~300 s, then `terminated` | no |
+| r4 | two 503 "Service is too busy" in 3 s, then `terminated` after 303 s | no |
+
+The old classifier labelled `terminated` and `stream ended without a finish reason` as agent failures; both are provider/stream drops and are now classified as provider failures (test added). Re-classified, **0 of 5 runs got a usable answer**. Together with the earlier single answered run (7/7 after the (g) correction, see above) there are **1 answered flash Task B run in total, below the gate of 4**, so the agent instructions were not touched.
+
+What the real runs show about the agent (not the provider): it orients with repo_map/search_code, states a Context plan, reads cli.py/test_cli.py/docs/cli.rst (all three were in the injected context in every run), edits several files, runs pytest through run_command, and in the one complete run reviewed its work with git_diff discovered through list_tools / get_tool_info / call_tool. It sometimes tries to read docs through `grep` in run_command (denied by the harness allowlist: the tool description says not to use it for reading; to watch). It did not use a scout in any run.
+
+Cost guard: 881,894 tokens (864,155 in / 17,739 out) over 3 attempts that used tokens, plus 6 provider-failed attempts with no tokens (not counted toward the 40-attempt cap). Limit 4,000,000.
+
+To complete the baseline when DeepSeek is back (the harness now pauses 10 minutes after 3 provider failures in a row and stops after 3 such pauses; provider failures without tokens do not count):
+
+    cd forge-agent && npm run eval -- --task b --model deepseek/flash --runs 5 --timeout 480
+
+then, if at least 4 runs got a real answer, ask me to start the tuning loop.

@@ -1,7 +1,7 @@
 /** Provider-failure classification and retry-with-backoff for eval runs. */
 export type FailureKind = "provider" | "agent";
 
-const PROVIDER = /Request failed \((?:5\d\d|429)\)|\b(?:502|503|504|529)\b|too busy|overloaded|rate.?limit|client-cancelled|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|fetch failed|socket hang up|connection (?:error|closed|reset)|timed? ?out/i;
+const PROVIDER = /Request failed \((?:5\d\d|429)\)|\b(?:502|503|504|529)\b|too busy|overloaded|rate.?limit|client-cancelled|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|fetch failed|socket hang up|connection (?:error|closed|reset)|timed? ?out|^terminated$|stream ended without a finish reason|other side closed|UND_ERR/i;
 
 /** A failed run counts as a provider failure when its errors look like 5xx / 429 / timeout / connection problems. */
 export function classifyFailure(errors: readonly string[]): FailureKind {
