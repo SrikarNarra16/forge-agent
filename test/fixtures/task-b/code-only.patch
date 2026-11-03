@@ -1,0 +1,45 @@
+diff --git a/src/flask/cli.py b/src/flask/cli.py
+index ed11f256..62c8522f 100644
+--- a/src/flask/cli.py
++++ b/src/flask/cli.py
+@@ -4,6 +4,7 @@ import ast
+ import collections.abc as cabc
+ import importlib.metadata
+ import inspect
++import json
+ import os
+ import platform
+ import re
+@@ -594,6 +595,7 @@ class FlaskGroup(AppGroup):
+             self.add_command(run_command)
+             self.add_command(shell_command)
+             self.add_command(routes_command)
++            self.add_command(config_command)
+ 
+         self._loaded_plugin_commands = False
+ 
+@@ -1115,6 +1117,24 @@ def routes_command(sort: str, all_methods: bool) -> None:
+         click.echo(template.format(*row))
+ 
+ 
++_SENSITIVE_CONFIG_PARTS = ("SECRET", "PASSWORD", "TOKEN", "KEY")
++
++
++@click.command("config", short_help="Show the app config as JSON.")
++@with_appcontext
++def config_command() -> None:
++    """Print the app config as JSON. Values of keys containing SECRET,
++    PASSWORD, TOKEN or KEY (any case) are replaced by ``***``.
++    """
++    data = {
++        key: "***"
++        if any(part in str(key).upper() for part in _SENSITIVE_CONFIG_PARTS)
++        else value
++        for key, value in current_app.config.items()
++    }
++    click.echo(json.dumps(data, indent=2, default=str))
++
++
+ cli = FlaskGroup(
+     name="flask",
+     help="""\
