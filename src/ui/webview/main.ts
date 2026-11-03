@@ -253,6 +253,13 @@ function mount(): void {
       case "upsert":
         upsert(message.items);
         break;
+      case "remove":
+        for (const id of message.ids) {
+          elements.get(id)?.remove();
+          elements.delete(id);
+        }
+        refreshEmpty();
+        break;
       case "status":
         setStatus(message.status);
         break;

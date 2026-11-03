@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 import type { ApprovalDecision, ApprovalHandler, NoticeLevel, PendingToolCall, UiSink } from "../trueforge/agentController";
 import type { ReducerChange, TurnView } from "../trueforge/events";
+import type { ChainEvent } from "../trueforge/modelChain";
 import type { RunState } from "../trueforge/runState";
 import type { Logger } from "../util/log";
 import { Batcher } from "./batcher";
@@ -151,6 +152,20 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
 
   onNotice(level: NoticeLevel, text: string): void {
     this.batcher.push(this.transcript.addNotice(level, text));
+  }
+
+  /** Retrying / switched / blocked: ONE notice that updates in place. (exhausted and TrueForge-down are reported by the run's error.) */
+  onChain(event: ChainEvent): void {
+    if (event.kind === "exhausted" || event.kind === "trueforge-down") return;
+    const level = event.kind === "blocked" ? "error" : event.kind === "switched" ? "warning" : "info";
+    this.batcher.push(this.transcript.upsert({ kind: "notice", id: "chain-status", level, text: event.text }));
+    this.batcher.flush();
+  }
+
+  onAttemptDiscarded(): void {
+    this.batcher.clear(); // pending updates belong to the failed attempt
+    const ids = this.transcript.discardAttempt();
+    if (ids.length > 0) this.post({ type: "remove", ids });
   }
 
   onReset(): void {

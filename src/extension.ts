@@ -2,6 +2,10 @@ import * as vscode from "vscode";
 import { NodeCommandRunner } from "./host/commandRunner";
 import { CommandTickets } from "./mcp/commandTickets";
 import { RunRegistry } from "./trueforge/runRegistry";
+import { RunSideEffects } from "./trueforge/sideEffects";
+import { promoteModel } from "./trueforge/modelChain";
+import { sessionUrl } from "./trueforge/client";
+import { ChainToasts } from "./ui/chainToasts";
 import { VscodeEditorUi } from "./host/editorUi";
 import { TerminalOutput } from "./host/terminalOutput";
 import { CommandApprovalHandler } from "./trueforge/commandApprovals";
@@ -39,7 +43,6 @@ let mcpStarting: Promise<McpServerHandle> | undefined;
 
 /** Commands that are stubs for now; each shows an information message until its prompt implements it. */
 const STUB_COMMANDS: ReadonlyArray<readonly [id: string, message: string]> = [
-  ["forge.switchModel", "Forge: model switching is not implemented yet (P10)."],
 ];
 
 /**
@@ -84,8 +87,11 @@ export function activate(context: vscode.ExtensionContext): void {
   const contextService = new ContextService(host, log);
   context.subscriptions.push(contextService);
   contextService.rebuild(); // background; search_code / repo_map scan files until the index is ready
-  const terminal = new TerminalOutput();
-  context.subscriptions.push(terminal);
+  const terminalOutput = new TerminalOutput();
+  const sideEffects = new RunSideEffects((runId) => checkpoints.filesOf(runId), () => registry.current);
+  // every command that starts counts as a side effect for the model chain (it may have changed anything)
+  const terminal = { started: (c: string) => (sideEffects.recordCommand(c), terminalOutput.started(c)), output: (c: string) => terminalOutput.output(c), finished: (r: Parameters<TerminalOutput["finished"]>[0]) => terminalOutput.finished(r) };
+  context.subscriptions.push(terminalOutput);
   const commands = new NodeCommandRunner({ getPrefix: () => vscode.workspace.getConfiguration("forge").get<string>("commandPrefix", "") });
   const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, editor: new VscodeEditorUi(host), run: { isCancelled: () => registry.isCancelled(), signal: () => registry.signal }, tickets, log: (m) => log.info(m) });
   mcpStarting = mcp;
@@ -101,7 +107,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const controller = new AgentController({
     client: createSdkTurnClient(getClient),
     agentName: FORGE_AGENT_NAME,
-    ui: new CompositeUi([runScope, panel, new ActivityLog(log, () => status.baseUrl)]),
+    ui: new CompositeUi([runScope, panel, new ChainToasts(), new ActivityLog(log, () => status.baseUrl)]),
     approvals: new RoutingApprovalHandler(
       new Map<string, ApprovalHandler>([
         ["propose_edit", reviewHandler],
@@ -114,6 +120,15 @@ export function activate(context: vscode.ExtensionContext): void {
     log: (m) => log.info(m),
     getRunId: () => runScope.runId,
     registry,
+    chain: {
+      models: () => vscode.workspace.getConfiguration("forge").get<string[]>("models", []).filter((m) => m.trim() !== ""),
+      stall: () => {
+        const cfg = vscode.workspace.getConfiguration("forge");
+        return { firstMs: cfg.get<number>("stallFirstEventSeconds", 45) * 1000, idleMs: cfg.get<number>("stallIdleSeconds", 90) * 1000 };
+      },
+      sideEffects: (runId) => sideEffects.of(runId),
+      sessionUrl: (id) => sessionUrl(status.baseUrl, id),
+    },
     cancel: {
       // Stop: kill commands, drop what could still act for the run, let an in-flight apply finish, then roll back.
       cancelWork: () => {
@@ -211,6 +226,22 @@ export function activate(context: vscode.ExtensionContext): void {
       await controller.stop();
     }),
     vscode.commands.registerCommand("forge.checkConnection", () => status.check()),
+    vscode.commands.registerCommand("forge.switchModel", async () => {
+      try {
+        const listed = (await getClient().models.list()).data.map((m) => m.name).sort();
+        const current = vscode.workspace.getConfiguration("forge").get<string[]>("models", []);
+        const picked = await vscode.window.showQuickPick(
+          listed.map((name) => ({ label: name, description: name === current[0] ? "in use" : current.includes(name) ? "fallback" : "" })),
+          { title: "Forge: Switch Model", placeHolder: "Choose the model to use first (the rest of forge.models stays as the fallback chain)" },
+        );
+        if (!picked) return;
+        // user settings (Global), never the workspace: the Flask checkout must stay clean
+        await vscode.workspace.getConfiguration("forge").update("models", promoteModel(current, picked.label), vscode.ConfigurationTarget.Global);
+        void vscode.window.showInformationMessage(`Forge will use ${picked.label} first. The next message starts a new session on it.`);
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Forge: could not list the models from TrueForge (${err instanceof Error ? err.message : String(err)}). Is TrueForge running?`);
+      }
+    }),
     vscode.commands.registerCommand("forge.rebuildContextIndex", () => contextService.rebuild()),
     vscode.commands.registerCommand("forge.smokeTest", () => runPrompt(SMOKE_PROMPTS.ping)),
     vscode.commands.registerCommand("forge.smokeTestCode", () => runPrompt(SMOKE_PROMPTS.code)),

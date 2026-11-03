@@ -43,7 +43,7 @@
     "commands": [
       {
         "command": "forge.inlineEdit",
-        "title": "Forge: Edit Selection\u2026"
+        "title": "Forge: Edit Selection…"
       },
       {
         "command": "forge.openAgent",
@@ -102,7 +102,7 @@
       },
       {
         "command": "forge.reviewPickHunk",
-        "title": "Forge: Review Hunks\u2026"
+        "title": "Forge: Review Hunks…"
       },
       {
         "command": "forge.fakeProposal",
@@ -195,9 +195,9 @@
           },
           "default": [
             "deepseek/flash",
-            "groq/gpt-oss-120b"
+            "deepseek/v4-pro"
           ],
-          "description": "TrueForge model names (provider/model). Order = fallback chain: the first is primary."
+          "description": "TrueForge model names (provider/model), in order. The first is used; if its provider fails (unreachable, bad key, overloaded, stalled) Forge retries it with backoff and then continues on the next one in a new TrueForge session. Change the first with 'Forge: Switch Model'."
         },
         "forge.contextBudgetTokens": {
           "type": "number",
@@ -213,6 +213,18 @@
           "type": "boolean",
           "default": true,
           "description": "Roll back edits applied during a run when the run is cancelled."
+        },
+        "forge.stallFirstEventSeconds": {
+          "type": "number",
+          "default": 45,
+          "minimum": 5,
+          "description": "A model that produces no output within this many seconds of the request is treated as stalled (then retried once, then the next model is used). Reasoning models can be silent for a while, so keep this generous. Time spent waiting for your approval or running a tool never counts."
+        },
+        "forge.stallIdleSeconds": {
+          "type": "number",
+          "default": 90,
+          "minimum": 10,
+          "description": "A running model that goes silent for this many seconds between outputs is treated as stalled. Time spent waiting for your approval or running a tool never counts."
         }
       }
     },

@@ -57,6 +57,8 @@ export class Transcript {
   private dividerCounter = 0;
   /** Compactions of the current reducer already shown as dividers. */
   private compactionsShown = 0;
+  /** Index in `list` right after the latest user message: everything from here on belongs to the current attempt. */
+  private attemptMark = 0;
   private userCounter = 0;
 
   get items(): readonly ChatItem[] {
@@ -69,6 +71,7 @@ export class Transcript {
     this.gated.clear();
     this.reviews.clear();
     this.compactionsShown = 0;
+    this.attemptMark = 0;
   }
 
   /** Attaches (or removes) the review info of a tool call; returns the updated card if it exists. */
@@ -83,7 +86,26 @@ export class Transcript {
 
   addUser(text: string): ChatItem {
     this.compactionsShown = 0; // each user message starts a run with a fresh reducer
-    return this.upsert({ kind: "user", id: `user-${++this.userCounter}`, text });
+    const item = this.upsert({ kind: "user", id: `user-${++this.userCounter}`, text });
+    this.attemptMark = this.list.length;
+    return item;
+  }
+
+  /**
+   * Drops everything the current attempt produced (assistant text, tool cards, subagent blocks, dividers) because the
+   * attempt failed and will be replayed on another model. Returns the removed ids so the webview can delete them.
+   */
+  discardAttempt(): string[] {
+    const removed = this.list.slice(this.attemptMark);
+    this.list = this.list.slice(0, this.attemptMark);
+    this.positions.clear();
+    this.list.forEach((item, i) => this.positions.set(item.id, i));
+    for (const item of removed) {
+      this.gated.delete(item.id);
+      this.reviews.delete(item.id);
+    }
+    this.compactionsShown = 0;
+    return removed.map((i) => i.id);
   }
 
   addNotice(level: "info" | "warning" | "error", text: string): ChatItem {

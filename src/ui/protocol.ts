@@ -86,6 +86,8 @@ export interface StatusInfo {
 export type ExtToWeb =
   | { type: "init"; items: ChatItem[]; status: StatusInfo }
   | { type: "upsert"; items: ChatItem[] }
+  /** Items to delete (a failed attempt that is being replayed on another model). */
+  | { type: "remove"; ids: string[] }
   | { type: "status"; status: StatusInfo }
   | { type: "review"; entries: ReviewQueueEntry[] }
   | { type: "context"; state: ContextViewState }

@@ -1,6 +1,7 @@
 import { messageText, type ReducerChange, type TurnView } from "./events";
 import { sessionUrl } from "./client";
 import type { NoticeLevel, UiSink } from "./agentController";
+import type { ChainEvent } from "./modelChain";
 import type { RunState } from "./runState";
 
 /** Small UiSink helpers (vscode-free): fan-out to several sinks, and a plain-text activity log for the Forge output channel. */
@@ -24,6 +25,12 @@ export class CompositeUi implements UiSink {
   }
   onReset(): void {
     for (const s of this.sinks) s.onReset();
+  }
+  onChain(event: ChainEvent): void {
+    for (const s of this.sinks) s.onChain?.(event);
+  }
+  onAttemptDiscarded(): void {
+    for (const s of this.sinks) s.onAttemptDiscarded?.();
   }
 }
 

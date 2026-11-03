@@ -112,9 +112,8 @@ export function registerInlineEdit(deps: InlineEditDeps): vscode.Disposable {
     if (!instruction) return;
     await deps.memento.update(HISTORY_KEY, pushHistory(history, instruction));
 
-    const model = vscode.workspace.getConfiguration("forge").get<string[]>("models", [])[0];
-    deps.log.info(`inline edit: ${snapshot.snapshot.path}:${snapshot.snapshot.startLine}-${snapshot.snapshot.endLine} model=${model ?? "(agent default)"}`);
+    deps.log.info(`inline edit: ${snapshot.snapshot.path}:${snapshot.snapshot.startLine}-${snapshot.snapshot.endLine}`);
     // Not awaited by anything that shows progress; the controller reports through the shared UI sinks.
-    void runInlineEdit({ controller: deps.controller, ui, agentName: INLINE_AGENT, model }, { snapshot: snapshot.snapshot, instruction });
+    void runInlineEdit({ controller: deps.controller, ui, agentName: INLINE_AGENT }, { snapshot: snapshot.snapshot, instruction });
   });
 }
