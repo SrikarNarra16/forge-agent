@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startMcpServer, type McpServerHandle } from "../src/mcp/server";
+import { EXTRAS_TOOL_NAMES } from "../src/mcp/tools/extras";
 import { READ_TOOL_NAMES, TOOL_NAMES } from "../src/mcp/tools/index";
 import { FIXTURE_FILES, FakeHost } from "./helpers/fakeHost";
 
@@ -58,6 +59,20 @@ describe("MCP server", () => {
       expect(result.content).toEqual([{ type: "text", text: "pong from forge-editor" }]);
       const read = await client.callTool({ name: "read_file", arguments: { path: "src/app/helpers.py", start: 4, end: 4, why: "check the server wiring" } });
       expect(JSON.stringify(read.content)).toContain("def get_debug_flag");
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("serves the extras tools on /mcp-extras with the same bearer token, and only those", async () => {
+    expect(handle.extrasUrl).toBe(`${base()}/mcp-extras`);
+    expect((await fetch(handle.extrasUrl, { method: "POST", body: initBody })).status).toBe(401);
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(handle.extrasUrl), { requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } } }));
+    try {
+      const tools = await client.listTools();
+      expect(tools.tools.map((t) => t.name).sort()).toEqual([...EXTRAS_TOOL_NAMES].sort());
+      expect(tools.tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
     } finally {
       await client.close();
     }

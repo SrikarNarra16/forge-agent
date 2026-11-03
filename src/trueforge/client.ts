@@ -14,6 +14,10 @@ export const DEFAULT_TIMEOUT_SECONDS = 600;
 /** Name under which our MCP server is registered in TrueForge. */
 export const FORGE_EDITOR_SERVER = "forge-editor";
 
+/** Second MCP server, registered with preload:false to demonstrate deferred tool loading. */
+export const FORGE_EXTRAS_SERVER = "forge-editor-extras";
+export const EXTRAS_DESCRIPTION = "Forge extra editor tools, discovered on demand: git_status, git_diff, find_references, open_in_editor (all read-only)";
+
 /** Name of the saved agent used by the smoke test and the agent panel. */
 export const FORGE_AGENT_NAME = "forge-agent";
 
@@ -38,13 +42,13 @@ export function sessionUrl(baseUrl: string, sessionId: string): string {
  * Body for PUT /api/v1/settings/mcp-servers (see docs/api-cheatsheet.md section 2):
  * a remote server with static header auth. The token is only ever placed in this body.
  */
-export function buildMcpServerUpsert(url: string, token: string): TrueForgeApi.settings.UpdateMcpServerRequest {
+export function buildMcpServerUpsert(url: string, token: string, name: string = FORGE_EDITOR_SERVER, description = "Forge VS Code editor tools (read, search, edit, run)"): TrueForgeApi.settings.UpdateMcpServerRequest {
   return {
     manifest: {
       type: "remote",
-      name: FORGE_EDITOR_SERVER,
+      name,
       url,
-      description: "Forge VS Code editor tools (read, search, edit, run)",
+      description,
       auth: { type: "header", headers: { Authorization: `Bearer ${token}` } },
     },
   };

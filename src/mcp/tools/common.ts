@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ContextIndex } from "../../context/indexer";
 import type { CommandRunner, TerminalSink } from "../commandRunner";
+import type { EditorUi } from "../editorUi";
 import { isInside } from "../../util/paths";
 import { HostError } from "../host";
 import { DecisionStore } from "../decisions";
@@ -40,10 +41,12 @@ export interface ToolDeps {
   commands?: CommandRunner | undefined;
   /** Live view of command output. */
   terminal?: TerminalSink | undefined;
+  /** Read-only editor actions (open_in_editor). */
+  editor?: EditorUi | undefined;
 }
 
-export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets>; decisions?: DecisionStore; index?: ContextIndex | undefined; commands?: CommandRunner | undefined; terminal?: TerminalSink | undefined }): ToolDeps {
-  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets }, decisions: deps.decisions ?? new DecisionStore(), index: deps.index, commands: deps.commands, terminal: deps.terminal };
+export function createToolDeps(deps: Pick<ToolDeps, "log" | "events"> & { budgets?: Partial<ToolBudgets>; decisions?: DecisionStore; index?: ContextIndex | undefined; commands?: CommandRunner | undefined; terminal?: TerminalSink | undefined; editor?: EditorUi | undefined }): ToolDeps {
+  return { log: deps.log, events: deps.events, budgets: { ...DEFAULT_BUDGETS, ...deps.budgets }, decisions: deps.decisions ?? new DecisionStore(), index: deps.index, commands: deps.commands, terminal: deps.terminal, editor: deps.editor };
 }
 
 /** Annotations for the read-only tools; annotations are informational, gating is by NAME in the agent spec. */

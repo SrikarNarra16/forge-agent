@@ -1,16 +1,15 @@
 import * as vscode from "vscode";
 import type { TrueForge } from "@truefoundry/trueforge-sdk";
 import type { McpServerHandle } from "../mcp/server";
+import { EXTRAS_TOOL_NAMES } from "../mcp/tools/extras";
 import { TOOL_NAMES } from "../mcp/tools/index";
+import { registerMcpServers } from "./mcpRegistration";
 import type { Logger } from "../util/log";
 import {
-  FORGE_EDITOR_SERVER,
   TRUEFORGE_START_COMMAND,
-  buildMcpServerUpsert,
   describeError,
   ensureAgent,
   isUnreachable,
-  listMcpToolNames,
   parseAgentFile,
   type AgentFile,
 } from "./client";
@@ -97,30 +96,10 @@ export class Bootstrapper {
     }
 
     const client = this.deps.getClient();
-    try {
-      await client.settings.mcpServers.createOrUpdate(buildMcpServerUpsert(handle.url, this.deps.token));
-      log.info(`Registered MCP server "${FORGE_EDITOR_SERVER}" in TrueForge at ${handle.url}`);
-    } catch (err) {
-      if (isUnreachable(err)) {
-        log.info("TrueForge not reachable yet; will retry when it connects.");
-        return finish(false, "unreachable", "TrueForge is not reachable.");
-      }
-      return this.mcpFailure("mcp-register", handle.url, err, agents);
-    }
-
-    try {
-      const tools = await listMcpToolNames(client, FORGE_EDITOR_SERVER);
-      log.info(`TrueForge lists tools from ${FORGE_EDITOR_SERVER}: ${tools.join(", ") || "(none)"}`);
-      const missing = TOOL_NAMES.filter((name) => !tools.includes(name));
-      if (missing.length > 0) {
-        throw new Error(`TrueForge does not list these tools: ${missing.join(", ")} (it lists ${tools.length})`);
-      }
-    } catch (err) {
-      if (isUnreachable(err)) {
-        log.info("TrueForge became unreachable during verification; will retry when it connects.");
-        return finish(false, "unreachable", "TrueForge is not reachable.");
-      }
-      return this.mcpFailure("mcp-verify", handle.url, err, agents);
+    const registered = await registerMcpServers(client, handle, this.deps.token, (m) => log.info(m));
+    if (!registered.ok) {
+      if (registered.stage === "unreachable") return finish(false, "unreachable", "TrueForge is not reachable.");
+      return this.mcpFailure(registered.stage, registered.url, registered.error, agents);
     }
 
     try {
@@ -134,7 +113,7 @@ export class Bootstrapper {
       return finish(false, "agents", `Could not save agents in TrueForge: ${describeError(err)}`);
     }
 
-    return finish(true, "done", `${agents.length} agent(s), ${TOOL_NAMES.length} tools verified`);
+    return finish(true, "done", `${agents.length} agent(s), ${TOOL_NAMES.length + EXTRAS_TOOL_NAMES.length} tools verified on 2 servers`);
   }
 
   private mcpFailure(stage: "mcp-register" | "mcp-verify", url: string, err: unknown, agents: AgentFile[]): BootstrapResult {

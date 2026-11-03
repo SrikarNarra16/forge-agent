@@ -5,6 +5,8 @@ export interface CommandRunOptions {
   signal?: AbortSignal | undefined;
   /** Called with each chunk of merged stdout/stderr as it arrives (live terminal view). */
   onOutput?: ((chunk: string) => void) | undefined;
+  /** Apply forge.commandPrefix (default true). Fixed internal commands such as git set false. */
+  usePrefix?: boolean | undefined;
 }
 
 export interface CommandResult {

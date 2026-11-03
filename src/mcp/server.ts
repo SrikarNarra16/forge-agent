@@ -5,6 +5,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { checkBearer, type BearerToken } from "./auth";
 import type { ContextIndex } from "../context/indexer";
 import type { CommandRunner, TerminalSink } from "./commandRunner";
+import type { EditorUi } from "./editorUi";
+import { registerExtrasTools, EXTRAS_SERVER } from "./tools/extras";
 import type { DecisionStore } from "./decisions";
 import { McpEvents } from "./events";
 import type { WorkspaceHost } from "./host";
@@ -20,6 +22,8 @@ export interface McpServerHandle {
   readonly port: number;
   /** URL to register in TrueForge, e.g. http://127.0.0.1:41234/mcp */
   readonly url: string;
+  /** URL of the forge-editor-extras server (same port, same token), e.g. http://127.0.0.1:41234/mcp-extras */
+  readonly extrasUrl: string;
   dispose(): Promise<void>;
 }
 
@@ -37,6 +41,8 @@ export interface McpServerOptions {
   commands?: CommandRunner;
   /** Live command output (Forge: Terminal). */
   terminal?: TerminalSink;
+  /** Read-only editor actions for open_in_editor. */
+  editor?: EditorUi;
   budgets?: Partial<ToolBudgets>;
   /** Receives server and tool log lines (tool name, duration, argument summary). Never the token, request bodies or file contents. */
   log?: (message: string) => void;
@@ -44,6 +50,7 @@ export interface McpServerOptions {
 
 const MAX_BODY_BYTES = 1_000_000;
 const SERVER_INFO = { name: "forge-editor", version: "0.0.1" } as const;
+const EXTRAS_INFO = { name: EXTRAS_SERVER, version: "0.0.1" } as const;
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown, headers: http.OutgoingHttpHeaders = {}): void {
   if (res.headersSent) return;
@@ -69,7 +76,7 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
 }
 
-async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse, host: WorkspaceHost, deps: ToolDeps): Promise<void> {
+async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse, host: WorkspaceHost, deps: ToolDeps, extras = false): Promise<void> {
   let body: unknown;
   try {
     body = await readJsonBody(req);
@@ -77,8 +84,9 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse, ho
     if (err instanceof BodyTooLargeError) return rpcError(res, 413, -32600, "Request body too large");
     return rpcError(res, 400, -32700, "Parse error");
   }
-  const server = new McpServer(SERVER_INFO);
-  registerTools(server, host, deps);
+  const server = new McpServer(extras ? EXTRAS_INFO : SERVER_INFO);
+  if (extras) registerExtrasTools(server, host, deps);
+  else registerTools(server, host, deps);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
     void transport.close();
@@ -90,7 +98,7 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse, ho
 
 export async function startMcpServer(options: McpServerOptions): Promise<McpServerHandle> {
   const { token, host, log } = options;
-  const deps = createToolDeps({ log: (m) => log?.(m), events: options.events ?? new McpEvents(), ...(options.budgets ? { budgets: options.budgets } : {}), ...(options.decisions ? { decisions: options.decisions } : {}), index: options.index, commands: options.commands, terminal: options.terminal });
+  const deps = createToolDeps({ log: (m) => log?.(m), events: options.events ?? new McpEvents(), ...(options.budgets ? { budgets: options.budgets } : {}), ...(options.decisions ? { decisions: options.decisions } : {}), index: options.index, commands: options.commands, terminal: options.terminal, editor: options.editor });
 
   const httpServer = http.createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
@@ -99,7 +107,7 @@ export async function startMcpServer(options: McpServerOptions): Promise<McpServ
       res.end("ok");
       return;
     }
-    if (path !== "/mcp") {
+    if (path !== "/mcp" && path !== "/mcp-extras") {
       sendJson(res, 404, { error: "not found" });
       return;
     }
@@ -111,7 +119,7 @@ export async function startMcpServer(options: McpServerOptions): Promise<McpServ
       rpcError(res, 405, -32000, "Method not allowed (stateless server: POST only)", { allow: "POST" });
       return;
     }
-    handleMcp(req, res, host, deps).catch((err: unknown) => {
+    handleMcp(req, res, host, deps, path === "/mcp-extras").catch((err: unknown) => {
       log?.(`MCP request failed: ${err instanceof Error ? err.message : String(err)}`);
       rpcError(res, 500, -32603, "Internal server error");
     });
@@ -132,6 +140,7 @@ export async function startMcpServer(options: McpServerOptions): Promise<McpServ
   return {
     port,
     url: `http://127.0.0.1:${port}/mcp`,
+    extrasUrl: `http://127.0.0.1:${port}/mcp-extras`,
     dispose: () => {
       closing ??= new Promise<void>((resolve) => {
         httpServer.close(() => resolve());

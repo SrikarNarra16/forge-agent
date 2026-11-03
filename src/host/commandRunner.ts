@@ -48,7 +48,7 @@ export class NodeCommandRunner implements CommandRunner {
   constructor(private readonly options: NodeRunnerOptions = {}) {}
 
   run(command: string, options: CommandRunOptions): Promise<CommandResult> {
-    const prefix = this.options.getPrefix?.().trim() ?? "";
+    const prefix = options.usePrefix === false ? "" : (this.options.getPrefix?.().trim() ?? "");
     const full = prefix === "" ? command : `${prefix} ${command}`;
     const started = Date.now();
     return new Promise<CommandResult>((resolve) => {

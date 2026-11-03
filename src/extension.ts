@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { NodeCommandRunner } from "./host/commandRunner";
+import { VscodeEditorUi } from "./host/editorUi";
 import { TerminalOutput } from "./host/terminalOutput";
 import { CommandApprovalHandler } from "./trueforge/commandApprovals";
 import { ContextService } from "./host/contextWiring";
@@ -81,7 +82,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const terminal = new TerminalOutput();
   context.subscriptions.push(terminal);
   const commands = new NodeCommandRunner({ getPrefix: () => vscode.workspace.getConfiguration("forge").get<string>("commandPrefix", "") });
-  const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, log: (m) => log.info(m) });
+  const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, editor: new VscodeEditorUi(host), log: (m) => log.info(m) });
   mcpStarting = mcp;
   mcp.catch((err: unknown) => log.error("MCP server failed to start", err));
   const getClient = () => createClient(status.baseUrl);
