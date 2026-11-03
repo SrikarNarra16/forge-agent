@@ -135,3 +135,9 @@ details.context > summary { cursor: pointer; display: flex; gap: 8px; align-item
 
 pre.command { margin: 2px 0 6px; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 3px; background: var(--vscode-textCodeBlock-background); font-family: var(--vscode-editor-font-family); }
 .run-allow { display: block; margin: 4px 0; font-size: 0.9em; }
+
+details.subagent { margin: 6px 0; border: 1px solid var(--vscode-widget-border, #444); border-left: 3px solid var(--vscode-charts-purple, #b180d7); border-radius: 4px; padding: 4px 6px; }
+details.subagent > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.subagent-body { margin-top: 4px; padding-left: 8px; display: flex; flex-direction: column; gap: 6px; }
+.divider { display: flex; align-items: center; gap: 8px; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+.divider::before, .divider::after { content: ""; flex: 1; border-top: 1px dashed var(--vscode-widget-border, #555); }

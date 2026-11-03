@@ -32,6 +32,8 @@ export function toolCardModel(item: ToolItem): ToolCardModel {
   if (item.review) {
     return { headline: item.review.path, inlineArgs: undefined, detailsArgs: hasArgs ? item.args : undefined };
   }
+  const meta = metaToolHeadline(item);
+  if (meta) return { headline: meta, inlineArgs: hasArgs ? item.args : undefined, detailsArgs: undefined };
   return { headline: item.argsSummary, inlineArgs: hasArgs ? item.args : undefined, detailsArgs: undefined };
 }
 
@@ -51,4 +53,24 @@ export function commandCardModel(item: ToolItem): CommandCardModel | undefined {
     offerRunAllow: item.approval === "pending",
     decided: item.approval === "allowed" ? "You allowed this command." : item.approval === "denied" ? "You denied this command." : undefined,
   };
+}
+
+/**
+ * TrueForge's deferred-loading meta tools: show WHICH tool they find or call ("git_diff via forge-editor-extras")
+ * instead of raw JSON, so the discovery is readable in the panel.
+ */
+export function metaToolHeadline(item: Pick<ToolItem, "name" | "args">): string | undefined {
+  if (item.name !== "list_tools" && item.name !== "get_tool_info" && item.name !== "call_tool") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(item.args);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const { mcp_server: server, tool_name: tool } = parsed as { mcp_server?: unknown; tool_name?: unknown };
+  const where = typeof server === "string" ? server : undefined;
+  if (item.name === "list_tools") return where ? `list tools of ${where}` : undefined;
+  if (typeof tool !== "string") return undefined;
+  return `${item.name === "get_tool_info" ? "describe " : ""}${tool}${where ? ` via ${where}` : ""}`;
 }

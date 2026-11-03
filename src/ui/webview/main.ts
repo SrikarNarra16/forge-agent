@@ -113,7 +113,12 @@ function mount(): void {
       const previous = elements.get(item.id);
       const next = renderItem(item, handlers, previous);
       if (previous?.isConnected) previous.replaceWith(next);
-      else transcript.appendChild(next);
+      else {
+        // items of a subagent thread live inside that subagent's block
+        const thread = "thread" in item ? item.thread : undefined;
+        const parent = thread ? Array.from(transcript.querySelectorAll<HTMLElement>("details.subagent")).find((d) => d.dataset["thread"] === thread)?.querySelector(".subagent-body") : null;
+        (parent ?? transcript).appendChild(next);
+      }
       elements.set(item.id, next);
     }
     refreshEmpty();

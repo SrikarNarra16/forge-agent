@@ -46,7 +46,7 @@ export interface ReviewQueueEntry extends ReviewItemInfo {
 
 export type ChatItem =
   | { kind: "user"; id: string; text: string }
-  | { kind: "assistant"; id: string; text: string; streaming: boolean; subagent?: string }
+  | { kind: "assistant"; id: string; text: string; streaming: boolean; subagent?: string; thread?: string }
   | {
       kind: "tool";
       id: string;
@@ -59,13 +59,19 @@ export type ChatItem =
       resultPreview?: string;
       durationMs?: number;
       subagent?: string;
+      /** Id of the subagent thread this call ran in (absent for the root agent). */
+      thread?: string;
       approval?: ApprovalState;
       /** run_command: the exact command, shown in a code block on the approval card. */
       command?: string;
       /** Present for propose_edit / create_file: the card shows "Review diff" instead of Allow/Deny. */
       review?: ReviewItemInfo;
     }
-  | { kind: "notice"; id: string; level: "info" | "warning" | "error"; text: string };
+  | { kind: "notice"; id: string; level: "info" | "warning" | "error"; text: string }
+  /** A subagent run: a collapsible block that holds the messages and tool calls of its thread. */
+  | { kind: "subagent"; id: string; thread: string; title: string; state: "running" | "done" | "error" }
+  /** A horizontal divider such as "Context compacted". */
+  | { kind: "divider"; id: string; text: string };
 
 export interface StatusInfo {
   state: RunState;

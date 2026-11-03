@@ -54,6 +54,9 @@ export class Transcript {
   /** Review info by tool call id, attached to the tool card (it may arrive before or after the card exists). */
   private readonly reviews = new Map<string, ReviewItemInfo>();
   private noticeCounter = 0;
+  private dividerCounter = 0;
+  /** Compactions of the current reducer already shown as dividers. */
+  private compactionsShown = 0;
   private userCounter = 0;
 
   get items(): readonly ChatItem[] {
@@ -65,6 +68,7 @@ export class Transcript {
     this.positions.clear();
     this.gated.clear();
     this.reviews.clear();
+    this.compactionsShown = 0;
   }
 
   /** Attaches (or removes) the review info of a tool call; returns the updated card if it exists. */
@@ -78,6 +82,7 @@ export class Transcript {
   }
 
   addUser(text: string): ChatItem {
+    this.compactionsShown = 0; // each user message starts a run with a fresh reducer
     return this.upsert({ kind: "user", id: `user-${++this.userCounter}`, text });
   }
 
@@ -108,6 +113,20 @@ export class Transcript {
     const changed: ChatItem[] = [];
     const subagentOf = (threadId: string): string | undefined => (threadId === "main" ? undefined : threadLabel(threads.get(threadId), threadId));
 
+    // Subagent blocks come first so their children (which follow in the timeline) land inside them.
+    for (const threadId of change.threads) {
+      const thread = threads.get(threadId);
+      if (!thread || threadId === "main") continue;
+      changed.push(this.upsert({ kind: "subagent", id: `sub-${threadId}`, thread: threadId, title: threadLabel(thread, threadId), state: thread.state }));
+    }
+
+    // Context compaction: a divider each time one finishes.
+    if (change.compaction && view.compaction.count > this.compactionsShown) {
+      this.compactionsShown = view.compaction.count;
+      const seconds = view.compaction.lastDurationMs !== undefined ? ` (${(view.compaction.lastDurationMs / 1000).toFixed(1)} s)` : "";
+      changed.push(this.upsert({ kind: "divider", id: `divider-${++this.dividerCounter}`, text: `Context compacted${seconds}` }));
+    }
+
     // Messages: render when they have text (a message that only carries tool calls has nothing to show).
     for (const id of change.messages) {
       const message = view.messages.find((m) => m.id === id);
@@ -115,7 +134,7 @@ export class Transcript {
       const existing = this.find(id);
       if (message.text === "" && !existing) continue;
       const subagent = subagentOf(message.threadId);
-      changed.push(this.upsert({ kind: "assistant", id, text: message.text, streaming: !message.complete, ...(subagent ? { subagent } : {}) }));
+      changed.push(this.upsert({ kind: "assistant", id, text: message.text, streaming: !message.complete, ...(subagent ? { subagent, thread: message.threadId } : {}) }));
     }
 
     // Tool calls
@@ -151,7 +170,7 @@ export class Transcript {
       status: call.status,
       ...(call.response !== undefined ? { resultPreview: clip(call.response, MAX_PREVIEW) } : {}),
       ...(call.durationMs !== undefined ? { durationMs: call.durationMs } : {}),
-      ...(subagent ? { subagent } : {}),
+      ...(subagent ? { subagent, thread: call.threadId } : {}),
       ...(approval ? { approval } : {}),
       ...(review ? { review } : {}),
       ...(call.name === "run_command" && commandOf(call.args) !== undefined ? { command: commandOf(call.args) as string } : {}),

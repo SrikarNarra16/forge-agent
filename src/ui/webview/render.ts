@@ -213,6 +213,25 @@ function renderApprovalRow(callId: string, handlers: RenderHandlers, offerRunAll
   return row;
 }
 
+/** A subagent block: header with title and status, body holds the thread's messages and tool calls (kept across re-renders). */
+function renderSubagent(item: Extract<ChatItem, { kind: "subagent" }>, previous: HTMLElement | undefined): HTMLElement {
+  const details = el("details", `item subagent state-${item.state}`);
+  details.dataset["id"] = item.id;
+  details.dataset["thread"] = item.thread;
+  details.open = previous instanceof HTMLDetailsElement ? previous.open : true;
+  const summary = el("summary");
+  summary.appendChild(el("span", "glyph", item.state === "running" ? "…" : item.state === "error" ? "✕" : "✓"));
+  summary.appendChild(el("span", "badge", "subagent"));
+  summary.appendChild(el("span", "tool-args", item.title));
+  summary.appendChild(el("span", "tool-meta", item.state === "running" ? "working" : item.state === "error" ? "failed" : "done"));
+  details.appendChild(summary);
+  const body = el("div", "subagent-body");
+  const old = previous?.querySelector(".subagent-body");
+  if (old) body.append(...Array.from(old.childNodes));
+  details.appendChild(body);
+  return details;
+}
+
 /** Builds the element for one transcript item. `previous` is the element being replaced (keeps cards open). */
 export function renderItem(item: ChatItem, handlers: RenderHandlers, previous?: HTMLElement): HTMLElement {
   switch (item.kind) {
@@ -233,6 +252,14 @@ export function renderItem(item: ChatItem, handlers: RenderHandlers, previous?: 
     }
     case "tool":
       return renderTool(item, handlers, previous);
+    case "subagent":
+      return renderSubagent(item, previous);
+    case "divider": {
+      const div = el("div", "item divider");
+      div.dataset["id"] = item.id;
+      div.appendChild(el("span", undefined, item.text));
+      return div;
+    }
     case "notice": {
       const div = el("div", `item notice ${item.level}`);
       div.dataset["id"] = item.id;
