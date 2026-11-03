@@ -101,6 +101,8 @@ class Capture {
   event(turn: number, event: unknown): void {
     this.lines.push(JSON.stringify({ turn, event }));
   }
+  /** ms since this capture started: arrival time of each event (for the stall-timing analysis). */
+  readonly startedAt = Date.now();
 }
 
 function recording(inner: TurnClient, capture: Capture, redact: (s: string) => string): TurnClient {
@@ -112,7 +114,7 @@ function recording(inner: TurnClient, capture: Capture, redact: (s: string) => s
       const stream = await inner.createTurnStream(sessionId, input);
       return (async function* () {
         for await (const event of stream as AsyncIterable<StreamEvent>) {
-          capture.lines.push(redact(JSON.stringify({ turn, event })));
+          capture.lines.push(redact(JSON.stringify({ turn, t: Date.now() - capture.startedAt, event })));
           yield event;
         }
       })();
