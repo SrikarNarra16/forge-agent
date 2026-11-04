@@ -57,15 +57,18 @@ async function main(): Promise<number> {
 
   const file = await readFirst([join(root, "trueforge", "models.local.json"), join(root, "trueforge", "models.example.json")]);
   console.log(`Providers file: trueforge/${file.path.split("/").pop()}`);
-  const providers = selectProviders(parseProvidersFile(JSON.parse(file.text) as unknown), { withBroken, onlyDemo });
-  const skipped = parseProvidersFile(JSON.parse(file.text) as unknown).length - providers.length;
+  const selected = selectProviders(parseProvidersFile(JSON.parse(file.text) as unknown), { withBroken, onlyDemo });
+  const skipped = parseProvidersFile(JSON.parse(file.text) as unknown).length - selected.length;
   if (skipped > 0 && !onlyDemo) console.log(`Skipping ${skipped} demo-only provider(s) (pass --with-broken to include).`);
 
-  const { keys, missing } = resolveApiKeys(providers, process.env);
-  if (missing.length > 0) {
-    console.error("Missing API key environment variables (keys are read from the environment, never from files):");
-    for (const m of missing) console.error(`  ${m.env}   (provider "${m.provider}")`);
-    console.error("Export them in this shell and re-run, e.g.: export DEEPSEEK_API_KEY=... GROQ_API_KEY=...");
+  // A provider whose key variable is not set is skipped (you only need the providers you use), not an error;
+  // it is an error only when nothing at all could be registered.
+  const { keys, missing } = resolveApiKeys(selected, process.env);
+  const skippedNoKey = new Set(missing.map((m) => m.provider));
+  for (const m of missing) console.log(`Skipping provider "${m.provider}": environment variable ${m.env} is not set (keys are read from the environment, never from files).`);
+  const providers = selected.filter((p) => !skippedNoKey.has(p.name));
+  if (providers.length === 0) {
+    console.error("No provider can be registered: no API key is set. Export at least one, e.g.: export DEEPSEEK_API_KEY=...  (GROQ_API_KEY=... is optional), then re-run.");
     return 1;
   }
 

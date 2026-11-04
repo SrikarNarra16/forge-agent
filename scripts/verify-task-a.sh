@@ -14,7 +14,7 @@ export PYTHONPATH="$FIXTURE/src${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONDONTWRITEBYTECODE=1
 
 if [ ! -x "$PY" ]; then
-  echo "FAIL: $PY not found. Create the fixture's virtualenv first (see docs/PROGRESS.md, P00)." >&2
+  echo "FAIL: $PY not found. Create the fixture first: scripts/setup-fixture.sh" >&2
   exit 2
 fi
 

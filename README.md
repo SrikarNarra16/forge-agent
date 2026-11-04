@@ -1,66 +1,162 @@
-# Forge: VS Code agent on TrueForge
+# Forge: a coding agent for VS Code, running on TrueForge
 
-A VS Code coding-agent extension whose agent loop runs on [TrueForge](https://trueforge.dev) (local mode).
-The extension is a client: it creates sessions and turns through `@truefoundry/trueforge-sdk` and renders the streamed events.
-Editor capabilities are exposed to the agent as MCP tools served by the extension itself over localhost HTTP (bearer-token protected).
+Forge is a VS Code extension. You describe a change (in the **Forge** panel, or by selecting code and pressing `Cmd/Ctrl+Alt+K`); an agent that runs on [TrueForge](https://trueforge.dev) (local mode) reads your project, proposes edits, and **nothing is written to disk until you have reviewed the diff** hunk by hunk.
 
-_Work in progress._
+- The extension is only a client of TrueForge: it creates sessions and turns through `@truefoundry/trueforge-sdk` and renders the streamed events. It never calls a model provider itself.
+- Editor capabilities (read a file, search, symbols, diagnostics, propose an edit, run a command) are MCP tools that the extension serves on localhost (bearer-token protected) and registers in TrueForge. `propose_edit` / `create_file` are gated by TrueForge's tool approval, which opens the diff review; accepting applies the hunks as ONE undo step.
+- Stop is instant and leaves no half-applied edits. If a model provider fails, Forge continues the same request on the next configured model.
 
-## Smoke test (agent in TrueForge calls a tool served by this extension)
+## Quick start (5 lines)
 
-Requires Node >= 22.14.
+```bash
+git clone https://github.com/SrikarNarra16/forge-agent.git && cd forge-agent
+npm ci && npm run build && npm run package               # builds forge-agent-0.0.1.vsix
+npm run tf:start                                          # terminal 1: TrueForge on http://localhost:8790 (leave it running)
+export DEEPSEEK_API_KEY=<your key> && npm run tf:setup    # terminal 2: registers the model providers
+scripts/setup-fixture.sh && code --install-extension forge-agent-0.0.1.vsix && code ../fixtures/flask   # Flask 3.1.3 + the extension
+```
 
-1. **Terminal 1:** `npm run tf:start` starts TrueForge on http://localhost:8790. It must be started with `OUTBOUND_URL_ALLOWED_HOSTS` allowing `localhost`/`127.0.0.1`, otherwise TrueForge's SSRF guard blocks our loopback MCP server; the script sets this.
-2. **Terminal 2:** `export DEEPSEEK_API_KEY=... GROQ_API_KEY=...` then `npm run tf:setup`. This upserts the model providers from `trueforge/models.example.json` (or `models.local.json`). Keys are read from the environment variables named by `apiKeyEnv`, never from files.
-3. Press F5 ("Run Extension"). On activation the extension starts its MCP server, registers it in TrueForge as `forge-editor` and saves the agent from `agents/forge-agent.json`.
-4. Open the **Forge** view in the activity bar and ask a question, or run **Forge: Smoke Test** / **Forge: Smoke Test (code question)** from the command palette (both just send a fixed prompt through the panel). The panel streams the answer and shows each tool call; the **Forge** output channel logs the TrueForge session id and URL, every tool call with its `why`, and the final answer.
-5. **Forge: Show Test Approval Card** shows a fake approval request in the panel (no TrueForge call) so you can try the Allow/Deny card.
+Then open the **Forge** view in the activity bar: the status bar should say `TrueForge: connected`. Try it without a model first: Command Palette -> **Forge: Fake Proposal** shows the whole review UI (diff, per-hunk Accept/Reject, Apply) on a made-up change; **Reject all** discards it. With a model: type a request in the panel.
 
-## Model fallback (Task C): when the provider fails
+## Prerequisites
 
-`forge.models` is an ordered list of TrueForge model names (default `["deepseek/flash", "deepseek/v4-pro"]`). If the first model's provider fails, Forge keeps the editor responsive and continues the SAME request on the next model, in a fresh TrueForge session (TrueForge has no native fallback and the extension never calls a provider directly):
+| What | Version | Used for |
+|---|---|---|
+| Node.js + npm | **>= 22.14** (tested with 26.0) | TrueForge requires it; also builds the extension |
+| VS Code | **>= 1.95** (tested with 1.143) | the `code` command must be on your PATH for the commands above (VS Code: Command Palette -> "Shell Command: Install 'code' command in PATH") |
+| git | any recent | cloning Forge and the Flask fixture |
+| Python | **>= 3.9** with `venv` (tested with 3.9.6) | only for the Flask tasks: `scripts/setup-fixture.sh` makes a virtualenv with Flask 3.1.3 and pytest |
+| A model API key | DeepSeek (default models) and/or Groq | `DEEPSEEK_API_KEY`, optional `GROQ_API_KEY`. Keys are read from environment variables only, never from files in the repo |
 
-| Failure | What Forge does |
-|---|---|
-| overloaded / 429 / 5xx / dropped stream | retry the same model twice (about 0.5 s, then 1.5 s, with jitter), then the next model |
-| endpoint unreachable ("Cannot connect to API"), invalid API key | no retries, next model at once |
-| no output (45 s to the first token, 90 s between outputs; waiting for your approval or a running tool never counts) | one retry, then the next model |
-| an agent / tool error | not a model failure: no fallback, the error is shown |
-| TrueForge itself unreachable | not a model failure: Forge says so, no fallback |
+## 1. Start TrueForge (local mode)
 
-A fallback only happens if the failed attempt had **no side effects** (no edit applied, no file created, no command run). Otherwise Forge stops, lists what was already applied and offers **Undo run**. Every switch is shown in the panel ("deepseek/flash unreachable (connection refused) -> switched to deepseek/v4-pro (after 2.1 s)"), the failed attempt's partial text is dropped, and **Stop** cancels the whole chain (also during a backoff). A fallback starts a new session, so earlier messages of a longer chat are not visible to the model (the notice says so). Change the first model with **Forge: Switch Model** (it edits your user settings, never the workspace).
+```bash
+npm run tf:start
+```
 
-**Fast failure.** `npm run tf:start` starts TrueForge with `MODEL_HTTP_CONNECT_TIMEOUT_MS=3000` (a dead endpoint fails within about 3 s instead of hanging) and `MODEL_HTTP_MAX_RETRIES=1` (TrueForge retries once; our own backoff does the real retrying, so a stricter TrueForge setting would only delay the fallback).
+This runs `npx @truefoundry/trueforge@latest` (UI + API on http://localhost:8790, SQLite, no Redis) with the environment variables Forge needs, see `trueforge/start.sh`:
 
-**Demo scenarios.** `npm run tf:setup -- --with-broken` (all providers; needs your real keys) or `npm run tf:setup -- --only-demo` (only these two, no keys needed, touches nothing else) registers two opt-in providers that always use a built-in fake key:
-`broken-endpoint/broken` (an endpoint that refuses connections) and `badkey-deepseek/flash` (the real DeepSeek URL with an invalid key). Then choose a chain with **Forge: Switch Model** or the `forge.models` setting (user settings):
+| Variable | Value | Why |
+|---|---|---|
+| `OUTBOUND_URL_ALLOWED_HOSTS` | `["localhost","127.0.0.1"]` | **Required.** TrueForge's SSRF guard blocks loopback URLs by default, which would block the extension's MCP server |
+| `MODEL_HTTP_CONNECT_TIMEOUT_MS` | `3000` | an unreachable model endpoint fails in about 3 s, so the fallback is quick |
+| `MODEL_HTTP_MAX_RETRIES` | `1` | Forge retries and falls back itself |
 
-1. `["broken-endpoint/broken", "deepseek/flash"]`: Task A or any request falls back automatically; `git status` of the workspace stays clean until you accept a hunk.
-2. `["broken-endpoint/broken"]`: a clear error that names the model and the failure ("No model could answer ... Check Settings -> Models in TrueForge / forge.models"), the workspace is untouched.
-3. `["badkey-deepseek/flash", "deepseek/flash"]`: the invalid key is classified as an authentication failure and skipped immediately.
+Extra arguments are passed through (`npm run tf:start -- --port 8791`). Other useful TrueForge variables: `PORT`, and `SQLITE_PATH` for a separate database.
 
-Headless check: `npm run eval -- --task a --fail-primary --runs 3` (and `--chain broken-endpoint/broken`).
+## 2. Configure models
 
-## Running two windows side by side
+`trueforge/models.example.json` lists the providers (DeepSeek `flash` and `v4-pro`, Groq `gpt-oss-120b`, plus two demo-only broken ones for Task C). **API keys are never stored in it**: `apiKeyEnv` names the environment variable that holds the key.
 
-The TrueForge resources Forge registers (`forge-editor`, `forge-editor-extras`, `forge-agent`, `forge-inline`) can be given a prefix with the `forge.resourcePrefix` setting (or the `FORGE_RESOURCE_PREFIX` environment variable, which wins), e.g. `win2-` registers `win2-forge-editor`, `win2-forge-agent` and so on. Two VS Code windows with different prefixes can run against one TrueForge without touching each other's resources; reload the window after changing it. The committed `agents/*.json` keep the default names (the prefix is applied when they are loaded). The end-to-end tests use `e2e-<pid>-` (docs/e2e.md).
+```bash
+export DEEPSEEK_API_KEY=...        # GROQ_API_KEY=... is optional
+npm run tf:setup                   # idempotent: creates or replaces the providers
+```
 
-## Settings that change how commands run
+A provider whose key variable is not set is skipped with a message. To change providers or models, copy the file to `trueforge/models.local.json` (gitignored) and edit it; `tf:setup` prefers it. The model names Forge uses are `provider/model`, e.g. `deepseek/flash` (setting `forge.models`, or **Forge: Switch Model**).
+
+## 3. Agents
+
+The agent definitions are in the repo: `agents/forge-agent.json` (the panel agent) and `agents/forge-inline.json` (the inline edit). You do not register them by hand: when the extension activates it registers its MCP server in TrueForge (`forge-editor`, `forge-editor-extras`) and saves both agents (names `forge-agent`, `forge-inline`; `forge.resourcePrefix` adds a prefix so two windows or test runs never collide). `npm run tf:setup` also saves them once the MCP server exists. Edit the JSON and reload the window to change instructions or tool lists.
+
+## 4. Install the extension
+
+- **From the repo (development):** open this folder in VS Code and press `F5` ("Run Extension").
+- **From a package:** `npm run package` creates `forge-agent-0.0.1.vsix`; `code --install-extension forge-agent-0.0.1.vsix`. To try it without touching your own profile: `code --user-data-dir /tmp/forge-profile --extensions-dir /tmp/forge-ext --install-extension forge-agent-0.0.1.vsix`, then start VS Code with the same two flags.
+
+## 5. The three fixed tasks (Flask 3.1.3)
+
+```bash
+scripts/setup-fixture.sh        # clones Flask at commit 22d92470 into ../fixtures/flask, creates its .venv (idempotent)
+code ../fixtures/flask          # open it with the extension installed
+scripts/reset-fixture.sh        # between tasks: discards changes in the fixture (never touches .venv)
+```
+
+| Task | What you do | Verify |
+|---|---|---|
+| **A** | Open `src/flask/helpers.py`, select `get_debug_flag`, press `Cmd/Ctrl+Alt+K`, type: *treat 'off' and 'n' as false too, case-insensitively, and update the docstring to list every false value*. Review the diff, accept, apply (`Cmd/Ctrl+Enter`) | `scripts/verify-task-a.sh`, or by hand `FLASK_DEBUG=off ../fixtures/flask/.venv/bin/python -c "import flask.helpers as h; print(h.get_debug_flag())"` prints `False` |
+| **B** | In the Forge panel, no files named: *Add a built-in CLI command `flask config` that prints the app config as JSON, masking the value of any key containing SECRET, PASSWORD, TOKEN, or KEY as "\*\*\*". It must appear in `flask --help`, have a test, and be documented with the other built-in commands.* Allow its commands, review each diff, apply | `scripts/verify-task-b.sh` (scores 7 checks) and `../fixtures/flask/.venv/bin/python -m pytest ../fixtures/flask/tests/test_cli.py -q` |
+| **C** | Break the model first: `npm run tf:setup -- --only-demo` (registers two demo providers that need no key), set `forge.models` to `["broken-endpoint/broken", "deepseek/flash"]`, repeat Task A. The editor stays responsive; Forge says the first model is unreachable and continues on `deepseek/flash` (to see the clear error instead, use only `["broken-endpoint/broken"]`) | `git -C ../fixtures/flask status` is clean before you apply anything; then `scripts/verify-task-a.sh` |
+
+`FIXTURE_DIR=/path/to/flask` overrides the fixture location for the scripts. More detail: `docs/task-c-demo.md`, `docs/cancel-tests.md`.
+
+## Settings
 
 | Setting | Default | What it does |
 |---|---|---|
-| `forge.commandPrefix` | empty | Shell prefix run before every command the agent runs. **Empty = auto-detect**: if the workspace has `.venv/bin/activate` (else `venv/bin/activate`), Forge uses `. .venv/bin/activate &&` (the POSIX dot, so it works under dash, bash and zsh). A value you set always wins; `true &&` turns activation off. The effective prefix is shown in the panel's Context section. Windows layouts (`Scripts\activate`) are not detected: commands run through a POSIX shell, so set the prefix yourself. |
-| `forge.autoAllowCommands.readOnly` | **off** | Tier 1: run `git status/diff/log/show/ls-files`, `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep` (no `-r`) and `rg` on workspace paths without asking. They change nothing and run no project code. |
-| `forge.autoAllowCommands.tests` | **off** | Tier 2: run `pytest` / `python -m pytest`, `ruff check` (never `--fix`) and `mypy` without asking. **Risk: these run workspace code** (pytest imports and executes your tests and `conftest.py`, including tests the agent just wrote; mypy loads the plugins named in its config). That is the same as running them yourself, but without a prompt. |
+| `forge.trueforge.baseUrl` | `http://localhost:8790` | Base URL of the local TrueForge server |
+| `forge.models` | `["deepseek/flash", "deepseek/v4-pro"]` | Ordered TrueForge models. The first is used; if its provider fails (unreachable, bad key, overloaded, stalled) Forge retries with backoff, then continues on the next one in a new TrueForge session. **Forge: Switch Model** changes the first |
+| `forge.contextBudgetTokens` | `6000` | Token budget for automatically injected context |
+| `forge.commandPrefix` | empty = auto | Shell prefix before every agent command. Empty: if the workspace has `.venv/bin/activate` (else `venv/bin/activate`), `. .venv/bin/activate &&` is used (POSIX `.`, works in dash, bash, zsh). Your value always wins; `true &&` turns it off. The effective prefix is shown in the panel's Context section. Windows layouts (`Scripts\activate`) are not detected |
+| `forge.autoAllowCommands.readOnly` | **off** | Tier 1: run `git status/diff/log/show/ls-files`, `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep` (no `-r`), `rg` on workspace paths without asking |
+| `forge.autoAllowCommands.tests` | **off** | Tier 2: run `pytest`, `ruff check` (never `--fix`), `mypy` without asking. **Risk: these execute workspace code** (pytest imports and runs your tests and `conftest.py`) |
+| `forge.rollbackOnCancel` | `true` | Stop rolls back the edits applied during the cancelled run |
+| `forge.stallFirstEventSeconds` / `forge.stallIdleSeconds` | `45` / `90` | A model silent for that long counts as stalled (retry, then next model); time waiting for your approval or a tool never counts |
+| `forge.resourcePrefix` | empty | Prefix for the TrueForge resources Forge registers; reload the window after changing it. The environment variable `FORGE_RESOURCE_PREFIX` wins |
 
-How the allow-list stays strict (details and measurements: docs/approval-friction.md): it is applied after the denylist; the WHOLE command must match a fixed pattern, so any chaining (`&&`, `;`, `|`, newline), redirect, `$( )`, backtick, `sudo`, `rm`, write flag (`--fix`, `-o`, `--junitxml`, `--output`...), unknown option, path outside the workspace or secrets file (`.env*`, `.git`, keys) falls back to the normal Allow card. The venv prefix Forge adds is not part of matching. Auto-allowed commands are marked `auto-allowed (tier 1|2)` on their card in the panel and logged; a command you denied earlier in the run always asks again. Known limit: a symlink inside the workspace that points outside it is not detected.
+Auto-allow details (what exactly matches, what always asks): `docs/approval-friction.md`. The strict rule: the WHOLE command must match, so anything with `&&`, `;`, `|`, redirects, `$( )`, backticks, `sudo`, `rm`, write flags (`--fix`, `-o`, `--junitxml`...), an unknown option, a path outside the workspace or a secrets file still shows the normal Allow card.
 
-## The review card in the panel
+Commands: **Forge: Open Agent**, **Edit Selection…** (`Cmd/Ctrl+Alt+K`), **Stop**, **Undo Last Agent Run**, **Switch Model**, **Rebuild Context Index**, **Accept/Reject Hunk(s)**, **Apply Accepted Hunks** (`Cmd/Ctrl+Enter`), **Fake Proposal** (try the review without a model).
 
-While a change waits for review, the card above the transcript shows "N of M hunks accepted, K undecided" and three buttons: **Accept all and apply** (accepts the undecided hunks, a hunk you rejected stays rejected, then applies), **Apply accepted** (undecided hunks count as rejected and are not written) and **Reject all**. All of them run the same commands as Cmd/Ctrl+Enter and the CodeLens, so there is one way to write a file and one undo step. The header's **Open in TrueForge** opens the current run's session in the TrueForge UI.
+## Architecture
 
-## Development
+```
+ VS Code window                                                     your machine, localhost
+┌───────────────────────────────────────────────────────────────┐
+│ Forge extension (TypeScript)                                  │
+│                                                               │   ┌──────────────────────────────┐
+│  Agent panel (webview) ─┐                                     │   │ TrueForge (local mode)       │   ┌────────────────┐
+│  Inline edit  ──────────┼─► AgentController ─ model chain ────┼──►│  agent loop, sessions, SSE   │──►│ model provider │
+│  Review UI (diff,       │      (stream, approvals, Stop)      │   │  `forge-agent`, `forge-inline`│   │ (DeepSeek, …)  │
+│  CodeLens, panel card) ◄┘            ▲                        │   └──────────────┬───────────────┘   └────────────────┘
+│            │ accepted hunks          │ allow / deny           │                  │ MCP over HTTP (bearer token)
+│            ▼                         │                        │                  ▼
+│  Applier (the ONLY writer) ◄─ ReviewApprovalHandler           │   tool calls: read_file, search_code, get_symbols,
+│  one WorkspaceEdit = one undo step                            │   get_diagnostics, run_command, propose_edit, create_file…
+│                                                               │                  │
+│  MCP server (127.0.0.1) ◄─────────────────────────────────────┼──────────────────┘
+└───────────────────────────────────────────────────────────────┘
+```
 
-`npm run build | typecheck | lint | test | package`; end-to-end tests in a real VS Code: `npm run test:e2e`, `npm run test:ui`, `npm run e2e:rehearsal` (docs/e2e.md).
+Rules the code enforces and tests check: no model provider is ever called from the extension; only `src/review/applier.ts` writes files (`test/writeIsolation.test.ts`); `propose_edit`/`create_file` need your per-hunk review; the edit tools only report decisions; cancellation leaves no partial edit; nothing blocks the extension host.
 
-Licence: MIT.
+## Troubleshooting
+
+| Symptom | What to do |
+|---|---|
+| Status bar says `TrueForge: disconnected` | TrueForge is not running or `forge.trueforge.baseUrl` is wrong. Start it with `npm run tf:start` |
+| **Port 8790 is in use** (another TrueForge, or something else) | Reuse the running TrueForge, or start a second one on another port with its own database: `SQLITE_PATH=/tmp/tf.sqlite npm run tf:start -- --port 8791`, then `npm run tf:setup -- --base-url http://localhost:8791` and set `forge.trueforge.baseUrl` to `http://localhost:8791` |
+| The agent cannot use its tools / "MCP server" errors | TrueForge was started without `OUTBOUND_URL_ALLOWED_HOSTS` (use `npm run tf:start`, not a plain `npx`), or Node is older than 22.14 |
+| **Provider 503 / overloaded / timeouts** | Forge retries (0.5 s, 1.5 s), then continues on the next model in `forge.models` and says so in the panel. If every model fails you get one clear message naming each model and its failure; the workspace is untouched. Check the provider's status page, or add a second provider/model |
+| **Key invalid** (401, "API key not valid") | The first model is skipped with a message naming it. Re-export the key and run `npm run tf:setup` again (it replaces the provider) |
+| `tf:setup` says "Skipping provider ... environment variable is not set" | Export the variable named in the message, or ignore it if you do not use that provider |
+| "No provider can be registered" | No key variable is set at all: `export DEEPSEEK_API_KEY=...` |
+| `scripts/verify-task-*.sh` says the fixture is missing | Run `scripts/setup-fixture.sh` (needs git and Python >= 3.9) |
+| Review diff shows no Accept/Reject buttons | Needs the setting `diffEditor.codeLens` (Forge enables it by default; Forge asks once if you turned it off). Fallbacks: **Forge: Review Hunks…**, the panel's buttons, `Cmd/Ctrl+Enter` |
+| Where are the logs? | Output panel -> **Forge**: every tool call with its reason, the TrueForge session id and URL; **Open in TrueForge** (panel header) opens the session |
+
+## Limitations
+
+- Local TrueForge only (SQLite standalone mode); no remote or multi-user setup, no authentication to TrueForge beyond what local mode has.
+- `run_command` uses a POSIX shell (`$SHELL -c`): macOS and Linux. Windows is not supported for commands, and the venv prefix auto-detection does not look for `Scripts\activate`.
+- Tested with VS Code 1.143 on macOS (arm64), Node 26, Python 3.9. Other platforms are untested.
+- Review diffs use VS Code CodeLens in the diff editor; a very large file (over the review size limit) is refused instead of blocking the editor.
+- The model decides what to change: quality depends on the model. Task B results vary from run to run (see `docs/eval-results.md` for measured pass rates).
+- Auto-allow cannot see through symlinks inside the workspace that point outside it.
+- Model-fallback keeps the request but not the earlier turns of the conversation (a new TrueForge session is used, and the panel says so).
+
+## Development and tests
+
+```bash
+npm run build && npm run typecheck && npm run lint && npm test     # what CI runs (no VS Code needed)
+npm run test:e2e         # real VS Code, hermetic scenarios (needs VS Code; set VSCODE_EXE for another install)
+npm run test:ui:panel    # Playwright clicks on the panel's review card (no model)
+```
+
+`docs/e2e.md` explains the end-to-end layers, their isolation (temp profile, throwaway `e2e-<pid>-` TrueForge resources, your own resources are never touched) and known risks; `docs/eval-results.md` has the evaluation of Tasks A and B; `docs/approval-friction.md` the approval measurements.
+
+Built with the help of AI coding tools (Claude Code); every change is reviewed and tested by the author.
+
+## License
+
+MIT, see `LICENSE`.
