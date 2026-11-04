@@ -5,6 +5,7 @@ import { RunRegistry } from "./trueforge/runRegistry";
 import { RunSideEffects } from "./trueforge/sideEffects";
 import { promoteModel } from "./trueforge/modelChain";
 import { sessionUrl } from "./trueforge/client";
+import { E2eRecorder, registerE2eHooks } from "./e2e/hooks";
 import { ChainToasts } from "./ui/chainToasts";
 import { VscodeEditorUi } from "./host/editorUi";
 import { TerminalOutput } from "./host/terminalOutput";
@@ -107,11 +108,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // The Agent panel and its controller. The panel is the UiSink and the generic Allow/Deny ApprovalHandler;
   // propose_edit / create_file are routed to the diff review instead.
+  const e2e = process.env["FORGE_E2E"] === "1"; // test hooks exist only in end-to-end test runs
+  const recorder = e2e ? new E2eRecorder() : undefined;
   const panel = new PanelUi(log, tracker);
   const controller = new AgentController({
     client: createSdkTurnClient(getClient),
     agentName: names.agent,
-    ui: new CompositeUi([runScope, panel, new ChainToasts(), new ActivityLog(log, () => status.baseUrl)]),
+    ui: new CompositeUi([runScope, panel, new ChainToasts(), new ActivityLog(log, () => status.baseUrl), ...(recorder ? [recorder] : [])]),
     approvals: new RoutingApprovalHandler(
       new Map<string, ApprovalHandler>([
         ["propose_edit", reviewHandler],
@@ -167,7 +170,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
   checkpoints.onChange(() => panel.setCanUndo(checkpoints.canUndo));
-  context.subscriptions.push(registerInlineEdit({ controller, agentName: names.inline, undo: undoLastRun, memento: context.globalState, log }));
+  const inlineEdit = registerInlineEdit({ controller, agentName: names.inline, undo: undoLastRun, memento: context.globalState, log });
+  context.subscriptions.push(inlineEdit);
 
   // Context assembly for panel turns: the <context> block goes to the model, the transcript shows what was typed.
   let preparing = false;
@@ -212,6 +216,11 @@ export function activate(context: vscode.ExtensionContext): void {
     panel,
     vscode.window.registerWebviewViewProvider(AgentViewProvider.viewType, new AgentViewProvider(context.extensionUri, panel)),
   );
+
+  if (recorder) {
+    log.info("FORGE_E2E=1: registering the end-to-end test hooks (forge.e2e.*)");
+    context.subscriptions.push(...registerE2eHooks({ panel, controller, reviewUi, recorder, inline: inlineEdit, sendPanel: (prompt) => sendWithContext(prompt, []), names }));
+  }
 
   for (const [id, message] of STUB_COMMANDS) {
     context.subscriptions.push(vscode.commands.registerCommand(id, () => vscode.window.showInformationMessage(message)));

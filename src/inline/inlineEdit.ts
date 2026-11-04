@@ -78,9 +78,16 @@ function createUi(deps: InlineEditDeps): InlineUi {
   };
 }
 
-export function registerInlineEdit(deps: InlineEditDeps): vscode.Disposable {
+export interface InlineEditHandle extends vscode.Disposable {
+  /** The command's body after the instruction is known (the QuickPick is the only part skipped); used by the e2e hooks. */
+  runWith(instruction: string): Promise<void>;
+}
+
+export function registerInlineEdit(deps: InlineEditDeps): InlineEditHandle {
   const ui = createUi(deps);
-  return vscode.commands.registerCommand("forge.inlineEdit", async () => {
+
+  /** Captures the selection and runs it; `getInstruction` is the QuickPick for the real command. */
+  const run = async (getInstruction: (history: readonly string[]) => Promise<string | undefined>): Promise<void> => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.selection.isEmpty) {
       void vscode.window.showInformationMessage("Select some code first");
@@ -110,12 +117,15 @@ export function registerInlineEdit(deps: InlineEditDeps): vscode.Disposable {
     }
 
     const history = deps.memento.get<string[]>(HISTORY_KEY, []).slice(0, MAX_HISTORY);
-    const instruction = await pickInstruction(history);
+    const instruction = await getInstruction(history);
     if (!instruction) return;
     await deps.memento.update(HISTORY_KEY, pushHistory(history, instruction));
 
     deps.log.info(`inline edit: ${snapshot.snapshot.path}:${snapshot.snapshot.startLine}-${snapshot.snapshot.endLine}`);
     // Not awaited by anything that shows progress; the controller reports through the shared UI sinks.
     void runInlineEdit({ controller: deps.controller, ui, agentName: deps.agentName ?? INLINE_AGENT }, { snapshot: snapshot.snapshot, instruction });
-  });
+  };
+
+  const command = vscode.commands.registerCommand("forge.inlineEdit", () => run((history) => pickInstruction(history)));
+  return { dispose: () => command.dispose(), runWith: (instruction) => run(() => Promise.resolve(instruction.trim() === "" ? undefined : instruction.trim())) };
 }

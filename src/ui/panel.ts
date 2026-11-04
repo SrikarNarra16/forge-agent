@@ -224,6 +224,21 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
 
   // --- messages from the webview ----------------------------------------------------------------------
 
+  /** Handles a raw webview message exactly like a real one (validated, then dispatched). Used by the e2e hooks for approval cards. */
+  receive(raw: unknown): void {
+    this.onMessage(raw);
+  }
+
+  /** Everything the panel currently shows (transcript, status, review queue, context section), for tests. */
+  snapshot(): { status: StatusInfo; items: ChatItem[]; review: ReviewQueueEntry[]; context: ReturnType<ContextPanelState["snapshot"]> } {
+    return { status: this.status, items: [...this.transcript.items], review: this.tracker.list().map(toQueueEntry), context: this.contextState.snapshot() };
+  }
+
+  /** Test hook: whether the webview view was resolved by VS Code. */
+  get hasView(): boolean {
+    return this.view !== undefined;
+  }
+
   private onMessage(raw: unknown): void {
     const message = parseWebMessage(raw);
     if (!message) {

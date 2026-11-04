@@ -99,6 +99,13 @@ export class ReviewUi implements ReviewPresenter, vscode.Disposable {
     };
   }
 
+  /** Read-only view of a pending review (its file and the text of every hunk), for tools that decide through the real commands. */
+  peek(callId: string): { path: string; hunks: Array<{ id: number; text: string }> } | undefined {
+    const review = this.active.get(callId);
+    if (!review) return undefined;
+    return { path: review.session.info.path, hunks: review.session.hunks.map((h) => ({ id: h.id, text: h.lines.map((l) => `${l.type}${l.text}`).join("") })) };
+  }
+
   /** Opens (or focuses) the diff of a pending review, revealed at its first changed hunk. */
   async open(callId: string): Promise<void> {
     const review = this.active.get(callId);
