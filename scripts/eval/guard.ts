@@ -1,9 +1,9 @@
 /**
- * Name guard for the eval harness: only throwaway TrueForge names of the exact form
+ * Name guard for the eval harness: only throwaway TrueForge names of the exact form (or the end-to-end tests' `e2e-<pid>-forge-*`)
  * `forge-eval-<pid>-r<run>-agent` / `-mcp` / `-extras` may ever be created or deleted.
  */
 const FORBIDDEN = new Set(["forge-agent", "forge-editor", "forge-editor-extras", "forge-inline"]);
-const THROWAWAY = /^forge-eval-\d+-r\d+-(agent|mcp|extras)$/;
+const THROWAWAY = /^(?:forge-eval-\d+-r\d+-(?:agent|mcp|extras)|e2e-\d+-forge-(?:editor|editor-extras|agent|inline))$/;
 
 export const agentName = (pid: number, run: number): string => `forge-eval-${pid}-r${run}-agent`;
 export const mcpName = (pid: number, run: number): string => `forge-eval-${pid}-r${run}-mcp`;

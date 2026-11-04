@@ -4,6 +4,7 @@ import type { McpServerHandle } from "../mcp/server";
 import { EXTRAS_TOOL_NAMES } from "../mcp/tools/extras";
 import { TOOL_NAMES } from "../mcp/tools/index";
 import { registerMcpServers } from "./mcpRegistration";
+import { applyPrefix, type ResourceNames } from "./resourceNames";
 import type { Logger } from "../util/log";
 import {
   TRUEFORGE_START_COMMAND,
@@ -38,6 +39,8 @@ export interface BootstrapDeps {
   mcp: Promise<McpServerHandle>;
   /** Called per run so a changed forge.trueforge.baseUrl is picked up. */
   getClient: () => TrueForge;
+  /** Resource names (default or prefixed). */
+  names: ResourceNames;
 }
 
 export class Bootstrapper {
@@ -96,7 +99,7 @@ export class Bootstrapper {
     }
 
     const client = this.deps.getClient();
-    const registered = await registerMcpServers(client, handle, this.deps.token, (m) => log.info(m));
+    const registered = await registerMcpServers(client, handle, this.deps.token, (m) => log.info(m), this.deps.names);
     if (!registered.ok) {
       if (registered.stage === "unreachable") return finish(false, "unreachable", "TrueForge is not reachable.");
       return this.mcpFailure(registered.stage, registered.url, registered.error, agents);
@@ -144,7 +147,7 @@ export class Bootstrapper {
     for (const name of files) {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(dir, name));
       try {
-        agents.push(parseAgentFile(JSON.parse(decoder.decode(bytes)) as unknown));
+        agents.push(applyPrefix(parseAgentFile(JSON.parse(decoder.decode(bytes)) as unknown), this.deps.names));
       } catch (err) {
         throw new Error(`agents/${name}: ${describeError(err)}`);
       }

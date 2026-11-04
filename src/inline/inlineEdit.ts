@@ -11,11 +11,13 @@ import { runInlineEdit, type InlineController, type InlineUi } from "./runner";
  * shared AgentController. No progress notification is awaited anywhere: a status bar item shows the run and
  * is removed when it ends, followed by ONE message with an Undo button.
  */
-export const INLINE_AGENT = "forge-inline";
+export const INLINE_AGENT = "forge-inline"; // default; the prefixed name comes in through InlineEditDeps.agentName
 const HISTORY_KEY = "forge.inlineHistory";
 
 export interface InlineEditDeps {
   controller: InlineController;
+  /** Name of the inline agent in TrueForge (default `forge-inline`, or the prefixed one). */
+  agentName?: string;
   /** Rolls back the last agent run (the Undo button). */
   undo: () => Promise<void>;
   memento: vscode.Memento;
@@ -114,6 +116,6 @@ export function registerInlineEdit(deps: InlineEditDeps): vscode.Disposable {
 
     deps.log.info(`inline edit: ${snapshot.snapshot.path}:${snapshot.snapshot.startLine}-${snapshot.snapshot.endLine}`);
     // Not awaited by anything that shows progress; the controller reports through the shared UI sinks.
-    void runInlineEdit({ controller: deps.controller, ui, agentName: INLINE_AGENT }, { snapshot: snapshot.snapshot, instruction });
+    void runInlineEdit({ controller: deps.controller, ui, agentName: deps.agentName ?? INLINE_AGENT }, { snapshot: snapshot.snapshot, instruction });
   });
 }

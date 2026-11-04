@@ -225,6 +225,11 @@
           "default": 90,
           "minimum": 10,
           "description": "A running model that goes silent for this many seconds between outputs is treated as stalled. Time spent waiting for your approval or running a tool never counts."
+        },
+        "forge.resourcePrefix": {
+          "type": "string",
+          "default": "",
+          "description": "Prefix for the TrueForge resources Forge registers (forge-editor, forge-editor-extras, forge-agent, forge-inline), e.g. 'win2-'. Lets two VS Code windows run side by side against one TrueForge. The environment variable FORGE_RESOURCE_PREFIX wins. Reload the window after changing it."
         }
       }
     },

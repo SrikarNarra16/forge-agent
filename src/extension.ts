@@ -21,7 +21,8 @@ import { McpEvents } from "./mcp/events";
 import { startMcpServer, type McpServerHandle } from "./mcp/server";
 import { AgentController, type ApprovalHandler } from "./trueforge/agentController";
 import { Bootstrapper } from "./trueforge/bootstrap";
-import { FORGE_AGENT_NAME, createClient } from "./trueforge/client";
+import { createClient } from "./trueforge/client";
+import { resolvePrefix, resourceNames } from "./trueforge/resourceNames";
 import { preflight } from "./trueforge/preflight";
 import { createSdkTurnClient } from "./trueforge/sdkAdapter";
 import { SMOKE_PROMPTS } from "./trueforge/smokeTest";
@@ -53,6 +54,9 @@ export let rollbackRun: ((runId: string) => Promise<readonly string[]>) | undefi
 
 export function activate(context: vscode.ExtensionContext): void {
   const log = createLogger();
+  // Resource names: a prefix lets several windows (or the e2e tests) share one TrueForge without touching each other's resources.
+  const names = resourceNames(resolvePrefix({ env: process.env["FORGE_RESOURCE_PREFIX"], setting: vscode.workspace.getConfiguration("forge").get<string>("resourcePrefix", "") }));
+  if (names.prefix !== "") log.info(`TrueForge resource prefix: "${names.prefix}" (${names.editor}, ${names.extras}, ${names.agent}, ${names.inline})`);
   const status = new TrueForgeStatus(log);
   context.subscriptions.push(log, status);
   log.info("Forge activated");
@@ -97,7 +101,7 @@ export function activate(context: vscode.ExtensionContext): void {
   mcpStarting = mcp;
   mcp.catch((err: unknown) => log.error("MCP server failed to start", err));
   const getClient = () => createClient(status.baseUrl);
-  const bootstrapper = new Bootstrapper({ log, extensionUri: context.extensionUri, token, mcp, getClient });
+  const bootstrapper = new Bootstrapper({ log, extensionUri: context.extensionUri, token, mcp, getClient, names });
   context.subscriptions.push(bootstrapper.watch(status));
   void bootstrapper.run(); // background: activation must stay fast and must never throw here
 
@@ -106,7 +110,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const panel = new PanelUi(log, tracker);
   const controller = new AgentController({
     client: createSdkTurnClient(getClient),
-    agentName: FORGE_AGENT_NAME,
+    agentName: names.agent,
     ui: new CompositeUi([runScope, panel, new ChainToasts(), new ActivityLog(log, () => status.baseUrl)]),
     approvals: new RoutingApprovalHandler(
       new Map<string, ApprovalHandler>([
@@ -163,7 +167,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
   checkpoints.onChange(() => panel.setCanUndo(checkpoints.canUndo));
-  context.subscriptions.push(registerInlineEdit({ controller, undo: undoLastRun, memento: context.globalState, log }));
+  context.subscriptions.push(registerInlineEdit({ controller, agentName: names.inline, undo: undoLastRun, memento: context.globalState, log }));
 
   // Context assembly for panel turns: the <context> block goes to the model, the transcript shows what was typed.
   let preparing = false;
