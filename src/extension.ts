@@ -32,7 +32,7 @@ import { RoutingApprovalHandler } from "./trueforge/routingApprovals";
 import { ActivityLog, CompositeUi } from "./trueforge/uiSinks";
 import { VscodeRestorer, VscodeReviewEditor } from "./review/applier";
 import { CheckpointStore } from "./review/checkpoints";
-import { runFakeProposal } from "./review/fakeProposal";
+import { runFakeProposal, TASK_A_EDITS } from "./review/fakeProposal";
 import { ProposalFileSystem } from "./review/proposalFs";
 import { ReviewApprovalHandler } from "./review/reviewHandler";
 import { ReviewUi } from "./review/reviewUi";
@@ -285,7 +285,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("forge.smokeTestCode", () => runPrompt(SMOKE_PROMPTS.code)),
     vscode.commands.registerCommand("forge.debugApprovalCard", () => panel.showTestApprovalCard()),
     vscode.commands.registerCommand("forge.undoLastRun", undoLastRun),
-    vscode.commands.registerCommand("forge.fakeProposal", () => runFakeProposal({ host, handler: reviewHandler })),
+    vscode.commands.registerCommand("forge.fakeProposal", () => runFakeProposal({ host, handler: reviewHandler, ...(e2e && process.env["FORGE_E2E_PROPOSAL"] === "task-a" ? { edits: TASK_A_EDITS } : {}) })),
   );
 }
 

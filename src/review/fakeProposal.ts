@@ -4,6 +4,7 @@ import type { WorkspaceHost } from "../mcp/host";
 import { isInside } from "../util/paths";
 import type { ApprovalHandler, PendingToolCall } from "../trueforge/agentController";
 import { planFakeEdits } from "./fakeProposalPlan";
+import type { TextEdit } from "./hunks";
 
 /**
  * "Forge: Fake Proposal": runs a made-up propose_edit (three separate edits to the active file, or to
@@ -13,7 +14,13 @@ import { planFakeEdits } from "./fakeProposalPlan";
 const FALLBACK_FILE = "src/flask/helpers.py";
 let counter = 0;
 
-export async function runFakeProposal(deps: { host: WorkspaceHost; handler: ApprovalHandler }): Promise<void> {
+/** The edits a model makes for Task A (a pure-insertion docstring hunk and a one-token code hunk); used by the e2e lens loop (FORGE_E2E_PROPOSAL=task-a). */
+export const TASK_A_EDITS: TextEdit[] = [
+  { old_text: '    :envvar:`FLASK_DEBUG` environment variable. The default is ``False``.\n    """', new_text: '    :envvar:`FLASK_DEBUG` environment variable. The default is ``False``.\n    Any of ``0``, ``false``, ``no``, ``off``, or ``n``, case-insensitive,\n    disables debug mode.\n    """' },
+  { old_text: 'not in {"0", "false", "no"}', new_text: 'not in {"0", "false", "no", "off", "n"}' },
+];
+
+export async function runFakeProposal(deps: { host: WorkspaceHost; handler: ApprovalHandler; /** Replaces the three marker edits (end-to-end tests only). */ edits?: TextEdit[] }): Promise<void> {
   let root: string;
   try {
     root = await deps.host.rootPath();
@@ -36,7 +43,7 @@ export async function runFakeProposal(deps: { host: WorkspaceHost; handler: Appr
     return;
   }
 
-  const plan = planFakeEdits(text, path.extname(rel).slice(1));
+  const plan = deps.edits ? ({ ok: true, edits: deps.edits } as const) : planFakeEdits(text, path.extname(rel).slice(1));
   if (!plan.ok) {
     void vscode.window.showInformationMessage(`Forge: ${plan.error}`);
     return;

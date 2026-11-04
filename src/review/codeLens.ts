@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { refreshUnlessAsked } from "./refreshBurst";
 import { PROPOSAL_SCHEME } from "./proposalFs";
 import type { ReviewSession } from "./session";
 
@@ -22,12 +23,31 @@ export class ProposalCodeLensProvider implements vscode.CodeLensProvider, vscode
     this.changed.fire();
   }
 
+  /** How often VS Code asked for the lenses of each proposal document (keyed by URI string). */
+  private readonly asked = new Map<string, number>();
+
+  /**
+   * Called after a review diff opened: if VS Code has still not asked this provider for the document at +600 ms (and again at
+   * +1.5 s), fires the change event so it does. When VS Code asked (the normal case) nothing is fired, so the lens is neither
+   * delayed nor redrawn. Bounded (2 checks); returns a canceller.
+   */
+  refreshAfterOpen(proposal: vscode.Uri, alive: () => boolean): () => void {
+    const key = proposal.toString();
+    return refreshUnlessAsked(() => this.changed.fire(), () => (this.asked.get(key) ?? 0) > 0, alive);
+  }
+
+  /** Forgets the request count of a finished review's document. */
+  forget(proposal: vscode.Uri): void {
+    this.asked.delete(proposal.toString());
+  }
+
   dispose(): void {
     this.changed.dispose();
   }
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
     if (document.uri.scheme !== PROPOSAL_SCHEME) return [];
+    this.asked.set(document.uri.toString(), (this.asked.get(document.uri.toString()) ?? 0) + 1);
     const session = this.lookup.sessionForProposal(document.uri);
     if (!session || session.finished) return [];
 

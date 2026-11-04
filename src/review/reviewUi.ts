@@ -21,6 +21,8 @@ interface ActiveReview {
   originalUri: vscode.Uri;
   lastText: string;
   unsubscribe: () => void;
+  /** Cancels the pending lens re-fires of this review (set by open()). */
+  cancelRefresh?: () => void;
 }
 
 export class ReviewUi implements ReviewPresenter, vscode.Disposable {
@@ -89,6 +91,8 @@ export class ReviewUi implements ReviewPresenter, vscode.Disposable {
     return {
       close: () => {
         review.unsubscribe();
+        review.cancelRefresh?.();
+        this.lenses.forget(proposalUri);
         void this.closeDiff(proposalUri);
         this.fs.remove(proposalUri);
         if (kind === "create") this.fs.remove(originalUri);
@@ -126,6 +130,9 @@ export class ReviewUi implements ReviewPresenter, vscode.Disposable {
         editor.selection = new vscode.Selection(selection.start, selection.start);
         editor.revealRange(selection, vscode.TextEditorRevealType.AtTop);
       }
+      // if VS Code never asked for this document's lenses (+600 ms, +1.5 s), nudge it; the normal path is left alone
+      review.cancelRefresh?.();
+      review.cancelRefresh = this.lenses.refreshAfterOpen(proposalUri, () => this.active.get(callId) === review && !session.finished);
     } catch (err) {
       this.log.error(`could not open the review diff for ${session.info.path}`, err);
       void vscode.window.showErrorMessage(`Forge could not open the review for ${session.info.path}: ${err instanceof Error ? err.message : String(err)}`);
