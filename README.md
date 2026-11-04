@@ -151,6 +151,9 @@ Rules the code enforces and tests check: no model provider is ever called from t
 npm run build && npm run typecheck && npm run lint && npm test     # what CI runs (no VS Code needed)
 npm run test:e2e         # real VS Code, hermetic scenarios (needs VS Code; set VSCODE_EXE for another install)
 npm run test:ui:panel    # Playwright clicks on the panel's review card (no model)
+# install check of the packaged .vsix, against a SEPARATE TrueForge (it registers forge-agent & co. under their real names):
+#   SQLITE_PATH=/tmp/tf.sqlite npm run tf:start -- --port 8791     # terminal 1
+#   TRUEFORGE_BASE_URL=http://localhost:8791 npm run test:vsix -- forge-agent-0.0.1.vsix
 ```
 
 `docs/e2e.md` explains the end-to-end layers, their isolation (temp profile, throwaway `e2e-<pid>-` TrueForge resources, your own resources are never touched) and known risks; `docs/eval-results.md` has the evaluation of Tasks A and B; `docs/approval-friction.md` the approval measurements.
