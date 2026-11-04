@@ -73,7 +73,14 @@ export function checkDocs(docsDiff: string): CheckResult {
   const added = addedLines(docsDiff);
   const mentions = added.some((l) => /flask config|``config``|`config`/i.test(l));
   const pass = mentions && added.filter((l) => l.trim() !== "").length >= 2;
-  return { id: "f", name: "docs/cli.rst documents `flask config`", pass, detail: pass ? `${added.length} line(s) added` : "docs/cli.rst gained no section/entry for `flask config`" };
+  // The pass/fail rule is frozen. The failure detail only says what the diff did contain, so a reader can tell
+  // "docs untouched" from "docs changed but the entry does not spell the command `flask config`".
+  const substantive = added.filter((l) => l.trim() !== "").length;
+  const failDetail =
+    substantive === 0
+      ? "docs/cli.rst gained no section/entry for `flask config` (the file was not changed)"
+      : `docs/cli.rst WAS changed (${substantive} non-blank line(s) added) but none contains the literal text \`flask config\` or \`\`config\`\`; e.g. an entry written as \`flask --app hello config\` or :func:\`config <...>\` does not match`;
+  return { id: "f", name: "docs/cli.rst documents `flask config`", pass, detail: pass ? `${added.length} line(s) added` : failDetail };
 }
 
 export interface ExpectedEntry {
