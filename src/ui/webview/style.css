@@ -93,6 +93,18 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .queue-row.state-applied .queue-state { color: var(--vscode-charts-green, #89d185); }
 .queue-row.state-rejected .queue-state, .queue-row.state-failed .queue-state { color: var(--vscode-errorForeground); }
 
+.ctx-prefix { font-family: var(--vscode-editor-font-family); word-break: break-all; }
+.review-controls { margin: 2px 4px 6px 12px; padding: 4px 6px; border-left: 2px solid var(--vscode-charts-yellow, #cca700); display: flex; flex-direction: column; gap: 3px; }
+.review-controls.state-applying { border-left-color: var(--vscode-descriptionForeground); }
+.review-controls .review-status { font-weight: 600; }
+.review-controls .review-note { font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+.review-buttons { display: flex; gap: 6px; margin-top: 2px; }
+.review-buttons button:disabled { opacity: 0.5; cursor: default; }
+.review-outcome { margin: 0 4px 4px 12px; font-size: 0.9em; }
+.review-outcome.ok { color: var(--vscode-charts-green, #89d185); }
+.review-outcome.error { color: var(--vscode-errorForeground); }
+.review-outcome.info { color: var(--vscode-descriptionForeground); }
+
 .review { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .review-file { font-family: var(--vscode-editor-font-family); font-weight: 600; }
 .review-summary { color: var(--vscode-descriptionForeground); }

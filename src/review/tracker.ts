@@ -3,7 +3,8 @@
  * propose_edit/create_file call, updated by the review handler as it moves through the states.
  * Pure and vscode-free.
  */
-export type ReviewState = "queued" | "reviewing" | "applied" | "rejected" | "failed" | "cancelled";
+/** `applying` = the user decided and the accepted hunks are being written (the panel disables its buttons meanwhile). */
+export type ReviewState = "queued" | "reviewing" | "applying" | "applied" | "rejected" | "failed" | "cancelled";
 
 export interface ReviewEntry {
   callId: string;
@@ -15,6 +16,9 @@ export interface ReviewEntry {
   hunks?: number;
   /** Hunks written, once applied. */
   applied?: number;
+  /** While reviewing: hunks accepted / rejected so far (the rest are undecided and count as rejected on Apply). */
+  accepted?: number;
+  rejected?: number;
   /** Why it failed or was rejected, for display. */
   detail?: string;
 }
@@ -47,7 +51,7 @@ export class ReviewTracker {
 
   /** Drops finished entries (called when a new user request starts). */
   clearFinished(): void {
-    for (const [id, entry] of this.map) if (entry.state !== "queued" && entry.state !== "reviewing") this.map.delete(id);
+    for (const [id, entry] of this.map) if (entry.state !== "queued" && entry.state !== "reviewing" && entry.state !== "applying") this.map.delete(id);
     this.emit();
   }
 

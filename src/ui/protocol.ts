@@ -8,7 +8,7 @@ import type { RunState } from "../trueforge/runState";
  */
 
 export type { RunState };
-export type { ContextViewPlan, ContextViewRead, ContextViewState, ContextViewItem } from "../context/view";
+export type { ContextViewPlan, ContextViewRead, ContextViewRun, ContextViewState, ContextViewItem } from "../context/view";
 
 /** A file or symbol the user pinned with @. */
 export interface MentionRef {
@@ -27,7 +27,7 @@ export type ToolStatus = "running" | "awaiting_approval" | "done" | "denied";
 export type ApprovalState = "pending" | "allowed" | "denied";
 
 /** Mirrors ReviewState in src/review/tracker.ts (checked in transcript.ts). */
-export type ReviewState = "queued" | "reviewing" | "applied" | "rejected" | "failed" | "cancelled";
+export type ReviewState = "queued" | "reviewing" | "applying" | "applied" | "rejected" | "failed" | "cancelled";
 
 /** A propose_edit / create_file call going through the diff review. */
 export interface ReviewItemInfo {
@@ -37,6 +37,9 @@ export interface ReviewItemInfo {
   state: ReviewState;
   hunks?: number;
   applied?: number;
+  /** While reviewing: hunks accepted / rejected so far; undecided = hunks - accepted - rejected. */
+  accepted?: number;
+  rejected?: number;
   detail?: string;
 }
 
@@ -81,6 +84,8 @@ export interface StatusInfo {
   compacting?: boolean;
   /** A run changed files and can be rolled back ("Undo run"). */
   canUndo?: boolean;
+  /** TrueForge session of the current run (the "Open in TrueForge" button links to it). */
+  sessionId?: string;
 }
 
 export type ExtToWeb =
@@ -102,6 +107,10 @@ export type WebToExt =
   | { type: "newChat" }
   | { type: "undoRun" }
   | { type: "openReview"; callId: string }
+  /** Panel buttons of a pending review: the same as Cmd+Enter / the CodeLens (forge.reviewApply / forge.reviewRejectAll). */
+  | { type: "reviewApply"; callId: string }
+  | { type: "reviewRejectAll"; callId: string }
+  | { type: "openTrueForge" }
   | { type: "approval"; callId: string; decision: "allow" | "deny"; reason?: string; allowThisRun?: boolean };
 
 const MAX_TEXT = 50_000;
@@ -136,11 +145,14 @@ export function parseWebMessage(data: unknown): WebToExt | undefined {
     case "stop":
     case "newChat":
     case "undoRun":
+    case "openTrueForge":
       return { type: data["type"] };
-    case "openReview": {
+    case "openReview":
+    case "reviewApply":
+    case "reviewRejectAll": {
       const callId = data["callId"];
       if (typeof callId !== "string" || callId === "" || callId.length > MAX_ID) return undefined;
-      return { type: "openReview", callId };
+      return { type: data["type"], callId };
     }
     case "send": {
       const text = data["text"];

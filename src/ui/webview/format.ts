@@ -12,6 +12,59 @@ export function reviewHeader(entries: ReadonlyArray<{ path: string }>): string {
   return `Review (${changes} ${changes === 1 ? "change" : "changes"} in ${files} ${files === 1 ? "file" : "files"})`;
 }
 
+/** The decisions of a review in progress. Undecided = not accepted and not rejected; they count as rejected on Apply. */
+export interface ReviewDecisions {
+  hunks: number;
+  accepted: number;
+  rejected: number;
+  undecided: number;
+}
+
+export function reviewDecisions(review: { hunks?: number; accepted?: number; rejected?: number }): ReviewDecisions {
+  const hunks = review.hunks ?? 0;
+  const accepted = Math.min(review.accepted ?? 0, hunks);
+  const rejected = Math.min(review.rejected ?? 0, hunks - accepted);
+  return { hunks, accepted, rejected, undecided: hunks - accepted - rejected };
+}
+
+/** "2 of 3 hunks accepted, 1 undecided" (a rejected count appears only when there is one). */
+export function reviewStatusLine(review: { hunks?: number; accepted?: number; rejected?: number }): string {
+  const d = reviewDecisions(review);
+  const parts = [`${d.accepted} of ${d.hunks} ${d.hunks === 1 ? "hunk" : "hunks"} accepted`];
+  if (d.rejected > 0) parts.push(`${d.rejected} rejected`);
+  if (d.undecided > 0) parts.push(`${d.undecided} undecided`);
+  return parts.join(", ");
+}
+
+/** What Apply will leave out; empty when every hunk is decided. */
+export function reviewUndecidedNote(review: { hunks?: number; accepted?: number; rejected?: number }): string {
+  const d = reviewDecisions(review);
+  if (d.undecided === 0) return "";
+  return `${d.undecided === 1 ? "The undecided hunk counts" : "Undecided hunks count"} as rejected: ${d.undecided === 1 ? "it" : "they"} will not be applied.`;
+}
+
+/** The line shown once a review has finished (or is being written). Empty while it is still waiting for a decision. */
+export function reviewOutcomeLine(review: { state: string; hunks?: number; applied?: number; detail?: string }): { text: string; tone: "ok" | "error" | "info" } | undefined {
+  switch (review.state) {
+    case "applying":
+      return { text: "Applying the accepted hunks…", tone: "info" };
+    case "applied": {
+      const applied = review.applied ?? 0;
+      const total = review.hunks ?? applied;
+      const left = total - applied;
+      return { text: `Applied ${applied} of ${total} ${total === 1 ? "hunk" : "hunks"}${left > 0 ? `; ${left} not applied (rejected or undecided)` : ""}.`, tone: "ok" };
+    }
+    case "rejected":
+      return { text: "Rejected: nothing was written.", tone: "info" };
+    case "failed":
+      return { text: `Not applied: nothing was written.${review.detail ? ` ${review.detail}` : ""}`, tone: "error" };
+    case "cancelled":
+      return { text: "Cancelled: nothing was written.", tone: "info" };
+    default:
+      return undefined;
+  }
+}
+
 export type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 
 export interface ToolCardModel {

@@ -8,7 +8,7 @@ import type { Logger } from "../util/log";
 import { Batcher } from "./batcher";
 import type { ReviewEntry, ReviewTracker } from "../review/tracker";
 import type { ContextReadEvent } from "../mcp/events";
-import type { ContextViewPlan } from "../context/view";
+import type { ContextViewPlan, ContextViewRun } from "../context/view";
 import { ContextPanelState } from "./contextState";
 import { parseWebMessage, type ChatItem, type ExtToWeb, type MentionRef, type MentionSuggestionInfo, type ReviewQueueEntry, type StatusInfo } from "./protocol";
 import { Transcript, prettyArgs, summarizeArgs } from "./transcript";
@@ -33,6 +33,12 @@ export interface PanelHandlers {
   openReview(callId: string): void;
   /** Roll back the files changed by the last agent run. */
   undoRun(): void;
+  /** The panel's "Apply accepted" button: runs forge.reviewApply, the command Cmd+Enter and the CodeLens use. */
+  applyReview(callId: string): void;
+  /** The panel's "Reject all" button: runs forge.reviewRejectAll. */
+  rejectReview(callId: string): void;
+  /** "Open in TrueForge": the current session's page, else the Sessions list. */
+  openTrueForge(): void;
 }
 
 function toQueueEntry(entry: ReviewEntry): ReviewQueueEntry {
@@ -44,6 +50,8 @@ function toQueueEntry(entry: ReviewEntry): ReviewQueueEntry {
     state: entry.state,
     ...(entry.hunks !== undefined ? { hunks: entry.hunks } : {}),
     ...(entry.applied !== undefined ? { applied: entry.applied } : {}),
+    ...(entry.accepted !== undefined ? { accepted: entry.accepted } : {}),
+    ...(entry.rejected !== undefined ? { rejected: entry.rejected } : {}),
     ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
   };
 }
@@ -85,6 +93,12 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   /** A run starts: show the context that was put into its message (undefined = nothing was injected). */
   showContext(plan: ContextViewPlan | undefined): void {
     this.contextState.beginRun(plan);
+    this.postContext();
+  }
+
+  /** The shell prefix commands run with (forge.commandPrefix or the auto-detected venv); shown in the Context section. */
+  setCommandPrefix(run: ContextViewRun): void {
+    this.contextState.setRun(run);
     this.postContext();
   }
 
@@ -148,6 +162,7 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   }
 
   onSession(info: { sessionId: string; model?: string }): void {
+    this.status = { ...this.status, sessionId: info.sessionId };
     if (info.model) this.status = { ...this.status, model: info.model };
     this.post({ type: "status", status: this.status });
   }
@@ -171,10 +186,12 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   }
 
   onReset(): void {
+    delete this.status.sessionId; // a new chat has no TrueForge session yet
     this.batcher.clear();
     this.transcript.clear();
     this.contextState.clear();
     this.post({ type: "reset" });
+    this.postContext(); // the command prefix stays visible after a new chat
   }
 
   // --- ApprovalHandler (inline cards) -----------------------------------------------------------------
@@ -275,6 +292,19 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
         break;
       case "openReview":
         this.handlers?.openReview(message.callId);
+        break;
+      case "reviewApply":
+      case "reviewRejectAll":
+        // Only a review that is waiting for its decision can be applied or rejected: a second click (or a stale one) does nothing.
+        if (this.tracker.get(message.callId)?.state !== "reviewing") {
+          this.log.info(`${message.type} for ${message.callId} ignored: it is not waiting for a decision`);
+          break;
+        }
+        if (message.type === "reviewApply") this.handlers?.applyReview(message.callId);
+        else this.handlers?.rejectReview(message.callId);
+        break;
+      case "openTrueForge":
+        this.handlers?.openTrueForge();
         break;
       case "approval":
         this.resolveApproval(message.callId, message.decision, message.reason, message.allowThisRun === true);

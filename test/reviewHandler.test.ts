@@ -202,6 +202,58 @@ describe("ReviewApprovalHandler: one file", () => {
     expect(r.presenter.sessions).toEqual([]);
   });
 
+  it("the tracker follows every decision (the panel's 'N of M hunks accepted' line) and passes through 'applying' while writing", async () => {
+    const c = edit("src/a.py", THREE);
+    const states: Array<{ state: string; accepted?: number; rejected?: number }> = [];
+    r.tracker.onChange((entries) => {
+      const e = entries.find((x) => x.callId === c.id);
+      if (e) states.push({ state: e.state, ...(e.accepted !== undefined ? { accepted: e.accepted } : {}), ...(e.rejected !== undefined ? { rejected: e.rejected } : {}) });
+    });
+    let seenWhileApplying: string | undefined;
+    r.editor.beforeApply = () => {
+      seenWhileApplying = r.tracker.get(c.id)?.state;
+    };
+    const pending = r.handler.decide(c, r.signal);
+    const s = await r.presenter.session(0);
+    expect(r.tracker.get(c.id)).toMatchObject({ state: "reviewing", hunks: 3, accepted: 0, rejected: 0 });
+    s.accept(0);
+    s.reject(1);
+    expect(r.tracker.get(c.id)).toMatchObject({ state: "reviewing", accepted: 1, rejected: 1 }); // hunk 3 is undecided
+    s.accept(2);
+    s.apply();
+    await pending;
+    expect(seenWhileApplying).toBe("applying"); // the panel disables its buttons for exactly this window
+    expect(states.map((x) => x.state)).toEqual(expect.arrayContaining(["reviewing", "applying", "applied"]));
+    expect(states.findIndex((x) => x.state === "applying")).toBeLessThan(states.findIndex((x) => x.state === "applied"));
+    expect(r.tracker.get(c.id)).toMatchObject({ state: "applied", applied: 2, hunks: 3 });
+  });
+
+  it("an entry that is being applied is not dropped by clearFinished()", async () => {
+    const c = edit("src/a.py", THREE);
+    let kept: boolean | undefined;
+    r.editor.beforeApply = () => {
+      r.tracker.clearFinished();
+      kept = r.tracker.get(c.id) !== undefined;
+    };
+    const pending = r.handler.decide(c, r.signal);
+    const s = await r.presenter.session(0);
+    s.acceptAll();
+    s.apply();
+    await pending;
+    expect(kept).toBe(true);
+  });
+
+  it("a failed write leaves the entry 'failed' with the reason (the panel shows it)", async () => {
+    r.editor.applyError = new Error("disk full");
+    const c = edit("src/a.py", THREE);
+    const pending = r.handler.decide(c, r.signal);
+    const s = await r.presenter.session(0);
+    s.acceptAll();
+    s.apply();
+    await pending;
+    expect(r.tracker.get(c.id)).toMatchObject({ state: "failed", detail: expect.stringContaining("disk full") });
+  });
+
   it("a write failure denies with the reason and records nothing", async () => {
     r.editor.applyError = new Error("disk full");
     const pending = r.handler.decide(edit("src/a.py", THREE), r.signal);

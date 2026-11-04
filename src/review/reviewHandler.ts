@@ -215,13 +215,16 @@ export class ReviewApprovalHandler implements ApprovalHandler {
       tracker.update(call.id, { state: "cancelled" });
       throw new ReviewCancelled();
     }
-    tracker.update(call.id, { state: "reviewing", hunks: session.hunks.length });
+    const showDecisions = (): void => tracker.update(call.id, { accepted: session.count("accepted"), rejected: session.count("rejected") });
+    tracker.update(call.id, { state: "reviewing", hunks: session.hunks.length, accepted: 0, rejected: 0 });
+    const stopWatching = session.onChange(showDecisions); // the panel's "2 of 3 hunks accepted" line follows every decision
     const onAbort = (): void => session.cancel();
     signal.addEventListener("abort", onAbort, { once: true });
     let handle: { close(): void } | undefined;
     try {
       handle = presenter.present(session, { autoOpen: this.open === 0 });
     } catch (err) {
+      stopWatching();
       signal.removeEventListener("abort", onAbort);
       return fail(`Could not open the review: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -231,6 +234,7 @@ export class ReviewApprovalHandler implements ApprovalHandler {
       result = await session.done;
     } finally {
       this.open--;
+      stopWatching();
       signal.removeEventListener("abort", onAbort);
       handle.close();
     }
@@ -262,6 +266,7 @@ export class ReviewApprovalHandler implements ApprovalHandler {
       throw new ReviewCancelled();
     }
     this.applying++;
+    tracker.update(call.id, { state: "applying", accepted: result.accepted.length, rejected: session.count("rejected") }); // the panel disables its buttons
     try {
       await editor.apply(request);
     } catch (err) {

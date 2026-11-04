@@ -1,5 +1,5 @@
 import type { ChatItem, ReviewItemInfo, ReviewQueueEntry } from "../protocol";
-import { commandCardModel, reviewHeader, toolCardModel } from "./format";
+import { commandCardModel, reviewHeader, reviewOutcomeLine, reviewStatusLine, reviewUndecidedNote, toolCardModel } from "./format";
 import { parseMarkdown, type Block, type Inline } from "./markdown";
 
 /**
@@ -10,6 +10,9 @@ import { parseMarkdown, type Block, type Inline } from "./markdown";
 export interface RenderHandlers {
   onApproval(callId: string, decision: "allow" | "deny", reason?: string, allowThisRun?: boolean): void;
   onOpenReview(callId: string): void;
+  /** "Apply accepted" / "Reject all" in the review queue. */
+  onReviewApply(callId: string): void;
+  onReviewRejectAll(callId: string): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -130,6 +133,8 @@ function reviewStateLabel(review: ReviewItemInfo): string {
       return "queued";
     case "reviewing":
       return review.hunks !== undefined ? `review ${review.hunks} hunk${review.hunks === 1 ? "" : "s"}` : "review";
+    case "applying":
+      return "applying…";
     case "applied":
       return `applied ${review.applied ?? "?"} of ${review.hunks ?? "?"}`;
     case "rejected":
@@ -159,7 +164,9 @@ function renderReviewRow(callId: string, review: ReviewItemInfo, handlers: Rende
     const text =
       review.state === "applied"
         ? `You applied ${review.applied ?? "?"} of ${review.hunks ?? "?"} hunks.`
-        : review.state === "rejected"
+        : review.state === "applying"
+          ? "Applying the accepted hunks…"
+          : review.state === "rejected"
           ? "You rejected this change."
           : review.state === "cancelled"
             ? "Cancelled before anything was written."
@@ -182,8 +189,55 @@ export function renderReviewQueue(entries: readonly ReviewQueueEntry[], handlers
     row.disabled = entry.state !== "reviewing";
     row.addEventListener("click", () => handlers.onOpenReview(entry.callId));
     box.appendChild(row);
+    const controls = renderReviewControls(entry, handlers);
+    if (controls) box.appendChild(controls);
   }
   return box;
+}
+
+/**
+ * The decision controls of one review in the queue: a status line, a note about undecided hunks and the "Apply accepted" /
+ * "Reject all" buttons while it waits; a result line once it was written (or failed). The buttons post the same commands
+ * as Cmd+Enter and the CodeLens (src/extension.ts), so there is no second way to write a file.
+ */
+function renderReviewControls(entry: ReviewQueueEntry, handlers: RenderHandlers): HTMLElement | undefined {
+  if (entry.state === "reviewing" || entry.state === "applying") {
+    const box = el("div", `review-controls state-${entry.state}`);
+    box.dataset["callId"] = entry.callId;
+    const line = reviewOutcomeLine(entry);
+    box.appendChild(el("div", "review-status", entry.state === "applying" ? (line?.text ?? "") : reviewStatusLine(entry)));
+    const note = entry.state === "reviewing" ? reviewUndecidedNote(entry) : "";
+    if (note) box.appendChild(el("div", "review-note", note));
+    const apply = el("button", "primary", "Apply accepted");
+    const reject = el("button", "secondary", "Reject all");
+    const accepted = entry.accepted ?? 0;
+    apply.disabled = entry.state === "applying" || accepted === 0;
+    reject.disabled = entry.state === "applying";
+    apply.title = entry.state === "applying" ? "Writing the change…" : accepted === 0 ? "Accept at least one hunk in the diff first (or use Reject all)" : "Write the accepted hunks (same as Cmd/Ctrl+Enter in the diff)";
+    reject.title = "Reject the whole change; nothing is written";
+    const lock = (): void => {
+      apply.disabled = true;
+      reject.disabled = true;
+    };
+    apply.addEventListener("click", () => {
+      lock();
+      handlers.onReviewApply(entry.callId);
+    });
+    reject.addEventListener("click", () => {
+      lock();
+      handlers.onReviewRejectAll(entry.callId);
+    });
+    const buttons = el("div", "review-buttons");
+    buttons.append(apply, reject);
+    box.appendChild(buttons);
+    return box;
+  }
+  const outcome = reviewOutcomeLine(entry);
+  if (!outcome) return undefined;
+  const line = el("div", `review-outcome ${outcome.tone}`, outcome.text);
+  line.dataset["callId"] = entry.callId;
+  line.setAttribute("role", outcome.tone === "error" ? "alert" : "status");
+  return line;
 }
 
 function renderApprovalRow(callId: string, handlers: RenderHandlers, offerRunAllow = false): HTMLElement {

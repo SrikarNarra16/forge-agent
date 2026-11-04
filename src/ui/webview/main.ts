@@ -35,6 +35,11 @@ function mount(): void {
   const newChat = document.createElement("button");
   newChat.className = "secondary";
   newChat.textContent = "New chat";
+  const openTf = document.createElement("button");
+  openTf.id = "open-trueforge";
+  openTf.className = "secondary";
+  openTf.textContent = "Open in TrueForge";
+  openTf.title = "Open the TrueForge Sessions list";
   const undo = document.createElement("button");
   undo.id = "undo";
   undo.className = "secondary";
@@ -48,7 +53,7 @@ function mount(): void {
   stop.disabled = true;
   const bar = document.createElement("header");
   bar.className = "bar";
-  bar.append(dot, statusText, modelText, spacer, undo, newChat, stop);
+  bar.append(dot, statusText, modelText, spacer, openTf, undo, newChat, stop);
 
   const queue = document.createElement("div");
   queue.className = "queue";
@@ -94,6 +99,8 @@ function mount(): void {
   const handlers: RenderHandlers = {
     onApproval: (callId, decision, reason, allowThisRun) => post({ type: "approval", callId, decision, ...(reason ? { reason } : {}), ...(allowThisRun ? { allowThisRun } : {}) }),
     onOpenReview: (callId) => post({ type: "openReview", callId }),
+    onReviewApply: (callId) => post({ type: "reviewApply", callId }),
+    onReviewRejectAll: (callId) => post({ type: "reviewRejectAll", callId }),
   };
 
   const nearBottom = (): boolean => shouldStickToBottom(transcript.scrollHeight, transcript.scrollTop, transcript.clientHeight);
@@ -136,6 +143,7 @@ function mount(): void {
     const label = status.compacting ? "Compacting context…" : STATE_LABEL[status.state];
     statusText.textContent = status.detail && (status.state === "error" || status.state === "cancelled") ? `${label}: ${status.detail}` : label;
     modelText.textContent = status.model ? status.model : "";
+    openTf.title = status.sessionId ? "Open this run's session in the TrueForge UI" : "No run yet: opens the TrueForge Sessions list";
     refreshControls();
   };
 
@@ -328,6 +336,7 @@ function mount(): void {
   stop.addEventListener("click", () => post({ type: "stop" }));
   newChat.addEventListener("click", () => post({ type: "newChat" }));
   undo.addEventListener("click", () => post({ type: "undoRun" }));
+  openTf.addEventListener("click", () => post({ type: "openTrueForge" }));
 
   refreshEmpty();
   refreshControls();
