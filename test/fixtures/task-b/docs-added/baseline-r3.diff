@@ -1,0 +1,21 @@
++
++Show the Config
++---------------
++
++The :func:`config <cli.config_command>` command prints the application's
++configuration as JSON, which is useful to check which values are actually
++loaded. ::
++
++    $ flask --app hello config
++    {
++      "APPLICATION_ROOT": "/",
++      "DEBUG": false,
++      "SECRET_KEY": "***"
++    }
++
++The values of keys that look like they hold sensitive information, that is,
++keys containing ``SECRET``, ``PASSWORD``, ``TOKEN``, or ``KEY``, are masked as
++``"***"`` so that the output can be shared safely.
++
++
++.. _dotenv:

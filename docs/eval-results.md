@@ -140,3 +140,19 @@ Baseline (runs `1921-r1..r4`, started by the user, no instruction changes since 
 - Efficiency: 332k-617k tokens per run (mean 425k, down 24% from 559k) and 19-25 model calls (was 27-29), 44-64 s per run. Behaviour: ran tests 5/5, git_diff via deferred loading 5/5, scout 0/5.
 - **Finding: the two (f) failures are false negatives of the scorer, in both the baseline and iteration 1.** I read the recorded `propose_edit` arguments for all four failing runs (`1921-r1`, `1921-r3`, `8383-r3`, `8383-r5`). Every one of them DID update `docs/cli.rst` with a proper section ("Show the Config" / "Show the Configuration": a heading, 13-17 lines, the `$ flask --app hello config` example output, the masking rule, and a link `:func:\`config <cli.config_command>\``), exactly in the style of the existing "Open a Shell" section, which the repo writes as `:func:\`shell <cli.shell_command>\`` and `$ flask --app hello shell`. Check (f) only accepts the literal text `flask config`, ``` ``config`` ``` or `` `config` `` in an added line, so `flask --app hello config` and `:func:\`config <...>\`` fail it. The (f) failure detail now says whether the file was changed. Nothing was changed in the pass/fail rule.
 - Decision requested (scoring is frozen, so I stopped the loop after one iteration instead of tuning prose to the regex): a corrected (f) such as "an added line matches `flask( --app \S+)? config`, ``` ``config`` ```, or `:func:` roles naming `config_command`, and >= 2 non-blank lines were added". Re-scored on recorded data it would turn the baseline from 2/4 into 4/4 and iteration 1 from 3/5 into 5/5 (the same kind of baseline correction as (g) on 3 Nov). Instructions that force the literal `flask config` into the prose would go against the file's own style, so I did not tune for it.
+
+### Scorer correction after human review of the failing runs (4 Nov 2026): check (f). Scoring is frozen again from here.
+Reason: reading the recorded edits of all four runs that failed (f) (baseline `1921-r1`, `1921-r3`, iteration 1 `8383-r3`, `8383-r5`) showed they DID document the command in `docs/cli.rst`, in the file's own style (`$ flask --app hello config`, `:func:\`config <cli.config_command>\``), but the old rule only accepted the literal text `flask config` / ``` ``config`` ``` / `` `config` ``.
+New rule (`DOCS_ENTRY_PATTERNS` in `scripts/eval/score-task-b.ts`): the change must be in **docs/cli.rst**, add **>= 2 non-blank lines**, and an added line must match `flask( --app \S+)? config`, ` ``config`` `, or a `:func:` role naming `config_command`. Nothing else changed. A related bug in the scorer's diff reader was fixed at the same time: a tracked file WITHOUT changes was read as "every line added" (it could not have produced a false pass on any recorded run, but it gave wrong details); an unchanged tracked file now has no added lines.
+Tests: the real added texts of the four runs are positive fixtures (`test/fixtures/task-b/docs-added/*.diff`); negative fixtures: an unrelated docs change, a one-line and a whitespace-only change, a mention of "config" in an unrelated context (`app.config[...]`, "the config file", `:class:\`Config\``), and a change to a DIFFERENT docs file (`docs-other-file.patch`, run against a real clone).
+
+Re-scored from the recorded events (`npx tsx scripts/eval/rescore.ts`; the reconstruction of the added lines reproduced the recorded OLD result in every run that has events):
+
+| Runs that got an answer | Before | After |
+|---|---|---|
+| Baseline `1921-r1..r4` (flash) | 2/4 | **4/4** (r1, r3: f FAIL -> PASS) |
+| Iteration 1 `8383-r1..r5` (flash) | 3/5 | **5/5** (r3, r5: f FAIL -> PASS) |
+| `77804-r1-a2` (flash, first complete run) | FAIL (g, fixed on 3 Nov) | PASS |
+| Provider-error runs (`62476-*`, `63115-r1`, `79515-*`) | FAIL | FAIL (no usable answer) |
+
+### Iteration 2 = confirming run: instructions UNCHANGED from iteration 1 (consistency check under the corrected scorer)

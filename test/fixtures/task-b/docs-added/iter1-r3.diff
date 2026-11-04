@@ -1,0 +1,26 @@
++
++.. _cli-config:
++
++Show the Configuration
++----------------------
++
++To see the values that are currently loaded in the app's config, use the
++:func:`config <cli.config_command>` command. The config is printed as JSON.
++
++.. code-block:: console
++
++    $ flask --app hello config
++    {
++      "APPLICATION_ROOT": "/",
++      "DEBUG": false,
++      "SECRET_KEY": "***",
++      "TESTING": false
++    }
++
++The value of any key that contains ``SECRET``, ``PASSWORD``, ``TOKEN``, or
++``KEY`` is replaced with ``"***"``, so the output is safe to share in issues or
++logs. Note that config values are shown as they are, so this is not a way to
++check values set from environment variables at request time.
++
++
++.. _dotenv:

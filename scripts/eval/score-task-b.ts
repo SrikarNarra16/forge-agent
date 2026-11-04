@@ -69,17 +69,30 @@ export function checkNewTest(testsDiff: string): CheckResult {
   return { id: "e", name: "new test referencing the config command in tests/test_cli.py", pass, detail: pass ? newTests.map((l) => l.trim()).join("; ") : newTests.length === 0 ? "no new test function" : "new tests do not reference the config command" };
 }
 
+/**
+ * How an entry for the command is recognised in the added lines of docs/cli.rst (the file where the other built-in
+ * commands are documented). Corrected on 4 Nov 2026 after a human review of the failing runs: the repo's own docs
+ * write commands as `flask --app hello shell` and :func:`shell <cli.shell_command>`, so those spellings count.
+ * Frozen since then.
+ */
+export const DOCS_ENTRY_PATTERNS: readonly RegExp[] = [
+  /\bflask(?: --app \S+)? config\b/, // `flask config`, `$ flask --app hello config`
+  /``config``/, // the command named in prose
+  /:func:`[^`]*config_command[^`]*`/, // a role pointing at the command function
+];
+
 export function checkDocs(docsDiff: string): CheckResult {
   const added = addedLines(docsDiff);
-  const mentions = added.some((l) => /flask config|``config``|`config`/i.test(l));
-  const pass = mentions && added.filter((l) => l.trim() !== "").length >= 2;
-  // The pass/fail rule is frozen. The failure detail only says what the diff did contain, so a reader can tell
-  // "docs untouched" from "docs changed but the entry does not spell the command `flask config`".
   const substantive = added.filter((l) => l.trim() !== "").length;
+  const mentions = added.some((l) => DOCS_ENTRY_PATTERNS.some((p) => p.test(l)));
+  const pass = mentions && substantive >= 2;
+  // The failure detail says what the diff did contain, so "docs untouched" is distinguishable from "docs changed, no entry".
   const failDetail =
     substantive === 0
       ? "docs/cli.rst gained no section/entry for `flask config` (the file was not changed)"
-      : `docs/cli.rst WAS changed (${substantive} non-blank line(s) added) but none contains the literal text \`flask config\` or \`\`config\`\`; e.g. an entry written as \`flask --app hello config\` or :func:\`config <...>\` does not match`;
+      : substantive < 2
+        ? "docs/cli.rst gained fewer than 2 non-blank lines"
+        : `docs/cli.rst WAS changed (${substantive} non-blank line(s) added) but no added line names the command (expected \`flask config\`, \`flask --app <app> config\`, \`\`config\`\` or a :func: role naming config_command)`;
   return { id: "f", name: "docs/cli.rst documents `flask config`", pass, detail: pass ? `${added.length} line(s) added` : failDetail };
 }
 
@@ -159,7 +172,12 @@ export async function deletedFiles(root: string): Promise<string[]> {
 async function fileDiff(root: string, path: string): Promise<string> {
   const tracked = await git(root, ["diff", "HEAD", "--", path]);
   if (tracked) return tracked;
-  // untracked new file: everything is added
+  // A tracked file without changes has no added lines. Only a file git does not know yet counts as entirely added.
+  const isTracked = await git(root, ["ls-files", "--error-unmatch", "--", path]).then(
+    () => true,
+    () => false,
+  );
+  if (isTracked) return "";
   try {
     const { stdout } = await exec("git", ["diff", "--no-index", "--", "/dev/null", path], { cwd: root, maxBuffer: 20_000_000 });
     return stdout;

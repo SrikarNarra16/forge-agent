@@ -1,0 +1,97 @@
+diff --git a/docs/api.rst b/docs/api.rst
+index 1aa8048f..d4b7a89e 100644
+--- a/docs/api.rst
++++ b/docs/api.rst
+@@ -692,6 +692,10 @@ Full example::
+ Command Line Interface
+ ----------------------
+ 
++The ``flask config`` command prints the app config as JSON.
++Keys containing SECRET, PASSWORD, TOKEN or KEY are masked.
++
++
+ .. currentmodule:: flask.cli
+ 
+ .. autoclass:: FlaskGroup
+diff --git a/src/flask/cli.py b/src/flask/cli.py
+index ed11f256..62c8522f 100644
+--- a/src/flask/cli.py
++++ b/src/flask/cli.py
+@@ -4,6 +4,7 @@ import ast
+ import collections.abc as cabc
+ import importlib.metadata
+ import inspect
++import json
+ import os
+ import platform
+ import re
+@@ -594,6 +595,7 @@ class FlaskGroup(AppGroup):
+             self.add_command(run_command)
+             self.add_command(shell_command)
+             self.add_command(routes_command)
++            self.add_command(config_command)
+ 
+         self._loaded_plugin_commands = False
+ 
+@@ -1115,6 +1117,24 @@ def routes_command(sort: str, all_methods: bool) -> None:
+         click.echo(template.format(*row))
+ 
+ 
++_SENSITIVE_CONFIG_PARTS = ("SECRET", "PASSWORD", "TOKEN", "KEY")
++
++
++@click.command("config", short_help="Show the app config as JSON.")
++@with_appcontext
++def config_command() -> None:
++    """Print the app config as JSON. Values of keys containing SECRET,
++    PASSWORD, TOKEN or KEY (any case) are replaced by ``***``.
++    """
++    data = {
++        key: "***"
++        if any(part in str(key).upper() for part in _SENSITIVE_CONFIG_PARTS)
++        else value
++        for key, value in current_app.config.items()
++    }
++    click.echo(json.dumps(data, indent=2, default=str))
++
++
+ cli = FlaskGroup(
+     name="flask",
+     help="""\
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index e254c1dd..b84ddbec 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -1,6 +1,7 @@
+ # This file was part of Flask-CLI and was modified under the terms of
+ # its Revised BSD License. Copyright © 2015 CERN.
+ import importlib.metadata
++import json
+ import os
+ import platform
+ import ssl
+@@ -18,6 +19,7 @@ from flask import Blueprint
+ from flask import current_app
+ from flask import Flask
+ from flask.cli import AppGroup
++from flask.cli import cli
+ from flask.cli import find_best_app
+ from flask.cli import FlaskGroup
+ from flask.cli import get_version
+@@ -700,3 +702,16 @@ def test_cli_empty(app):
+ def test_run_exclude_patterns():
+     ctx = run_command.make_context("run", ["--exclude-patterns", __file__])
+     assert ctx.params["exclude_patterns"] == [__file__]
++
++
++def test_config_command_masks_sensitive_keys(runner):
++    app = Flask("configapp")
++    app.config.update(SECRET_KEY="s", DB_PASSWORD="p", api_token="t", PLAIN="ok")
++    script_info = ScriptInfo(create_app=lambda: app)
++    result = runner.invoke(cli, ["config"], obj=script_info)
++    assert result.exit_code == 0
++    data = json.loads(result.output)
++    assert data["SECRET_KEY"] == "***"
++    assert data["DB_PASSWORD"] == "***"
++    assert data["api_token"] == "***"
++    assert data["PLAIN"] == "ok"

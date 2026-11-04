@@ -1,0 +1,17 @@
++
++
++Show the Config
++---------------
++
++The :func:`config <cli.config_command>` command prints the app's configuration
++as JSON. The value of any key that contains ``SECRET``, ``PASSWORD``,
++``TOKEN``, or ``KEY`` is masked with ``***``, so the output can be shared
++without leaking credentials. ::
++
++    $ flask --app hello config
++    {
++      "DEBUG": false,
++      "SECRET_KEY": "***",
++      "SQLALCHEMY_DATABASE_URI": "sqlite:///hello.db",
++      "TESTING": false
++    }

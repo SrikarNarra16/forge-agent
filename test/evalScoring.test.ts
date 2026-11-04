@@ -4,6 +4,7 @@ import { mkdtemp, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { assertThrowaway, agentName, mcpName, snapshotDiff } from "../scripts/eval/guard";
 import { autoPresenter, decide } from "../scripts/eval/diskEditor";
@@ -187,4 +188,55 @@ describe("eval report", () => {
     expect(formatSummary([base])).toMatch(/Overall: 0\/1 runs passed/);
     expect(formatSummary([base])).toMatch(/Failures: 1 agent, 0 provider/);
   });
+});
+
+
+describe("check (f), corrected after human review of the failing runs (4 Nov 2026)", () => {
+  const fixture = (name: string): string => readFileSync(join(__dirname, "fixtures", "task-b", "docs-added", `${name}.diff`), "utf8");
+
+  // REAL added texts of the four runs the old rule failed although they documented the command in the file's own style
+  it.each(["baseline-r1", "baseline-r3", "iter1-r3", "iter1-r5"])("passes the real docs entry of run %s", (name) => {
+    const r = checkDocs(fixture(name));
+    expect(r.pass, r.detail).toBe(true);
+  });
+
+  it("the three accepted spellings, each with >= 2 non-blank added lines", () => {
+    expect(checkDocs("+Show the Config\n+Run ``flask config`` to print it.\n").pass).toBe(true); // flask config
+    expect(checkDocs("+Show the Config\n+    $ flask --app hello config\n").pass).toBe(true); // flask --app <app> config
+    expect(checkDocs("+Show the Config\n+The ``config`` command prints it.\n").pass).toBe(true); // ``config``
+    expect(checkDocs("+Show the Config\n+The :func:`config <cli.config_command>` command prints it.\n").pass).toBe(true); // :func: role
+  });
+
+  it("fails an unrelated docs change", () => {
+    const r = checkDocs("+Use the new theme.\n+It looks better.\n");
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/WAS changed .* but no added line names the command/);
+  });
+  it("fails a one-line or whitespace-only change", () => {
+    expect(checkDocs("+``flask config``\n").pass).toBe(false); // names it, but only one line
+    expect(checkDocs("+\n+   \n+\n").pass).toBe(false);
+    expect(checkDocs("+\n").detail).toMatch(/not changed/);
+    expect(checkDocs("").pass).toBe(false);
+  });
+  it("fails a mention of 'config' in an unrelated context", () => {
+    for (const text of ["+Read app.config['SECRET_KEY'] in your view.\n+Use the config object for settings.\n", "+The config file is read at startup.\n+Edit config.py first.\n", "+See :class:`Config` and :meth:`Config.from_object`.\n+More text.\n"]) {
+      expect(checkDocs(text).pass, text).toBe(false);
+    }
+  });
+});
+
+describe.skipIf(!haveFixture)("check (f) only reads docs/cli.rst", () => {
+  it("documenting the command in a DIFFERENT docs file does not pass (f)", async () => {
+    const ws = await createWorkspace();
+    try {
+      await run("git", ["apply", join(__dirname, "fixtures", "task-b", "docs-other-file.patch")], { cwd: ws.root });
+      const r = await scoreTaskB({ root: ws.root, python: ws.python });
+      const f = r.checks.find((c) => c.id === "f");
+      expect(f?.pass).toBe(false);
+      expect(f?.detail).toMatch(/not changed/);
+      expect(r.checks.find((c) => c.id === "a")?.pass).toBe(false); // cli.rst is also one of the three required files
+    } finally {
+      await ws.dispose();
+    }
+  }, 120_000);
 });
