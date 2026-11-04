@@ -171,3 +171,5 @@ REVIEW. Before you finish, review your own changes with git_diff from forge-edit
 
 SCOUT (optional). If the Relevant locations are not enough to see where similar built-ins, tests and docs live in an unfamiliar part of the repo, you may spawn ONE read-only scout subagent. Tell it to use only search_code, repo_map, list_dir and read_file (never edit files or run commands) and to return a compact list of `path:lines - why`. Then do the editing yourself. Skip the scout when the locations you already have are enough.
 ```
+
+**v4-pro with the same final instructions (once, 5 runs):** 5/5 pass under the same frozen scorer; mean 899k tokens, 31 model calls, 41 tool calls and 167 s per run (flash after tuning: ~433k-495k tokens, 21-23 model calls, 30-32 tool calls, 55-63 s). Full table in docs/eval-results.md.

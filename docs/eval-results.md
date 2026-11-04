@@ -170,3 +170,21 @@ Result of iteration 2 (instructions unchanged, scorer as corrected): **5/5** pas
 | Baseline, instructions of P08 (`1921-r1..r4`) | 4/4 | 2/4 | 568k | 20-29 (mean 25.3) | 32 / 37.8 / 41 | 67 | $0.18 |
 | Iteration 1: FEATURES step (`8383-r1..r5`) | 5/5 | 3/5 | 433k | 19-25 (mean 21.4) | 28 / 30.4 / 32 | 55 | $0.17 |
 | Iteration 2: unchanged, confirming (`11172-r1..r5`) | 5/5 | 5/5 | 495k | 17-27 (mean 23.0) | 24 / 32.2 / 37 | 63 | $0.20 |
+| 2026-11-04-12187-r1 | 2026-11-04 | B | deepseek/v4-pro | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 1158788/16037 | 201s; 38 model calls; search_code×16 read_file×22 propose_edit×3 run_command×2 list_tools×1 get_tool_info×1 call_tool×2; changed 3 (3 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-12187-r2 | 2026-11-04 | B | deepseek/v4-pro | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 1192338/16892 | 215s; 36 model calls; get_symbols×1 search_code×13 read_file×17 propose_edit×6 run_command×5 list_tools×1 get_diagnostics×1 get_tool_info×1 call_tool×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-12187-r3 | 2026-11-04 | B | deepseek/v4-pro | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 622737/10690 | 130s; 23 model calls; read_file×14 search_code×10 propose_edit×3 run_command×2 get_diagnostics×2 list_tools×1 call_tool×1; changed 3 (3 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-12187-r4 | 2026-11-04 | B | deepseek/v4-pro | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 739123/10945 | 137s; 28 model calls; read_file×14 get_symbols×1 search_code×12 propose_edit×4 run_command×3 list_tools×1 get_tool_info×1 call_tool×1 get_diagnostics×2; changed 3 (3 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-12187-r5 | 2026-11-04 | B | deepseek/v4-pro | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 716749/12203 | 150s; 29 model calls; read_file×17 search_code×13 propose_edit×4 run_command×1 get_diagnostics×2 list_tools×1 call_tool×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+
+### deepseek/v4-pro, Task B x5, final (tagged) instructions (`12187-r1..r5`, run once, reported separately)
+**5/5** pass (a-g all 5/5; no provider failures). Per run: 4.5M tokens in total, mean 899k (623k-1.19M), 23-38 model calls (mean 30.8), 33-47 tool calls (mean 40.8), 130-215 s (mean 167 s). Spend of these 5 runs about $0.36. Behaviour: ran tests 5/5, git_diff via deferred loading 5/5, scout 0/5. Changed files: 3 in runs r1, r3, r4 (cli.py, test_cli.py, cli.rst only), 4 in r2 and r5 (plus docs/api.rst); every changed file had been surfaced by the retrieval.
+
+### Final table (Task B, final instructions, corrected and frozen scorer)
+| Model | Runs | Pass | Tokens/run (mean) | Model calls/run | Tool calls/run (min / mean / max) | Seconds/run | Spend |
+|---|---|---|---|---|---|---|---|
+| deepseek/flash, baseline instructions | 4 | 4/4 (2/4 original scorer) | 568k | 25.3 | 32 / 37.8 / 41 | 67 | $0.18 |
+| deepseek/flash, iteration 1 | 5 | 5/5 (3/5 original) | 433k | 21.4 | 28 / 30.4 / 32 | 55 | $0.17 |
+| deepseek/flash, iteration 2 (unchanged, confirming) | 5 | 5/5 | 495k | 23.0 | 24 / 32.2 / 37 | 63 | $0.20 |
+| deepseek/v4-pro, same instructions | 5 | 5/5 | 899k | 30.8 | 33 / 40.8 / 47 | 167 | $0.36 |
+
+Cost guard: estimated total spend $1.07 of $3.00 (13,393,284 tokens, $0.08 per million) after the whole Task B tuning and the v4-pro run. v4-pro costs about twice as much per run and takes about 2.7x longer than flash for the same pass rate here.
