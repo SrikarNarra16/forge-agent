@@ -22,6 +22,11 @@ function assert(cond: unknown, message: string): asserts cond {
   if (!cond) throw new Error(message);
 }
 
+/** What happened after `before` was taken: the transcript and the notices keep earlier scenarios' entries. */
+function since(before: E2eState, now: E2eState): E2eState {
+  return { ...now, items: now.items.slice(before.items.length), notices: now.notices.slice(before.notices.length), stateHistory: now.stateHistory.slice(before.stateHistory.length) };
+}
+
 const decide = (policy: unknown): Thenable<unknown> => vscode.commands.executeCommand("forge.e2e.decide", { policy });
 /** State of the NEWEST review (finished ones of earlier scenarios stay in the queue until the next run). */
 const reviewState = (s: E2eState): string | undefined => s.review.at(-1)?.state;
@@ -190,10 +195,11 @@ const taskBRejected: Scenario = {
   name: "Task B with one rejected hunk -> the agent is told and the result is reported",
   live: true,
   async run(cfg) {
+    const before = await state();
     await decide("rejectIndexOfFirst:0");
     const t0 = Date.now();
     await vscode.commands.executeCommand("forge.e2e.sendPanel", { prompt: TASK_B_PROMPT });
-    const s = await waitIdle(480_000);
+    const s = since(before, await waitIdle(480_000));
     await decide("stop");
     assert(s.runState === "done", `run ended '${s.runState}': ${s.notices.map((n) => n.text).join(" | ")}`);
     const first = s.items.find((i) => i.kind === "tool" && i.name === "propose_edit");
@@ -211,6 +217,7 @@ const stopMidRun: Scenario = {
   name: "Stop mid-run -> state cancelled, workspace pristine (git status clean)",
   live: true,
   async run(cfg) {
+    const before = await state();
     await decide("acceptAll");
     await vscode.commands.executeCommand("forge.e2e.sendPanel", { prompt: TASK_B_PROMPT });
     // stop after the first file was really applied, so the rollback has something to undo
@@ -219,7 +226,7 @@ const stopMidRun: Scenario = {
     await vscode.commands.executeCommand("forge.stop");
     const s = await waitFor("the run to be cancelled", async () => {
       const st = await state();
-      return st.runState === "cancelled" ? st : undefined;
+      return st.runState === "cancelled" ? since(before, st) : undefined;
     }, 20_000, 50);
     const took = Date.now() - t0;
     await decide("stop");
@@ -261,9 +268,10 @@ const brokenOnly: Scenario = {
   name: "Task C: chain [broken-endpoint/broken] only -> clear error, pristine workspace",
   live: true,
   async run(cfg) {
+    const before = await state();
     await setModels(["broken-endpoint/broken"]);
     await inlineTaskA(cfg);
-    const s = await waitIdle(60_000);
+    const s = since(before, await waitIdle(60_000));
     assert(s.runState === "error", `expected an error, got '${s.runState}'`);
     const text = s.notices.map((n) => n.text).join(" | ");
     assert(/No model could answer/.test(text) && /broken-endpoint\/broken/.test(text), `unclear error: ${text}`);

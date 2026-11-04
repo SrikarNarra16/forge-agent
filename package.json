@@ -248,7 +248,9 @@
     "tf:start": "bash trueforge/start.sh",
     "tf:setup": "tsx scripts/tf-setup.ts",
     "eval": "tsx scripts/eval/run.ts",
-    "test:e2e": "tsx e2e/run.ts"
+    "test:e2e": "tsx e2e/run.ts",
+    "test:ui": "tsx e2e/ui/run.ts b",
+    "e2e:rehearsal": "tsx e2e/ui/run.ts rehearsal"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

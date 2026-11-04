@@ -58,6 +58,12 @@ export async function run(): Promise<void> {
     }
     await vscode.commands.executeCommand("forge.e2e.decide", { policy: "stop" });
     await vscode.commands.executeCommand("forge.stop"); // never leave a run behind for the next scenario
+    if (scenario.live) {
+      // failed scenarios spent tokens too: count what the last run reported
+      const last = results[results.length - 1];
+      const usage = (await state()).usage;
+      if (last && last.data?.["tokens"] === undefined) last.data = { ...last.data, tokens: usage.input + usage.output };
+    }
     await sleep(300);
     await write();
   }
