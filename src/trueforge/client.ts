@@ -33,9 +33,21 @@ export function createClient(baseUrl: string): TrueForge {
   return new TrueForge({ baseUrl: normalizeBaseUrl(baseUrl), timeoutInSeconds: DEFAULT_TIMEOUT_SECONDS });
 }
 
-/** Link to a session in the TrueForge UI. */
+/**
+ * Link to a session in the TrueForge UI. The URL shape is read from the running UI itself, not guessed: its bundled
+ * route table (checked against @truefoundry/trueforge on 4 Nov 2026) has `session: "/sessions/:sessionId"` and
+ * `sessionsBrowser: "/sessions"`, it is a path-based router (no `#`), and the server answers both paths with the UI
+ * when the request accepts HTML. The id is the API's session id (the `id` of GET /api/v1/sessions). What was NOT
+ * verified is how the page renders in a browser; if a future TrueForge changes its routes, `trueForgeLink` below is
+ * the one place to adjust.
+ */
 export function sessionUrl(baseUrl: string, sessionId: string): string {
-  return `${normalizeBaseUrl(baseUrl)}/sessions/${sessionId}`;
+  return `${normalizeBaseUrl(baseUrl)}/sessions/${encodeURIComponent(sessionId)}`;
+}
+
+/** The "Open in TrueForge" target: the current session's page, or the Sessions list when no session exists yet. */
+export function trueForgeLink(baseUrl: string, sessionId: string | undefined): string {
+  return sessionId ? sessionUrl(baseUrl, sessionId) : `${normalizeBaseUrl(baseUrl)}/sessions`;
 }
 
 /**
