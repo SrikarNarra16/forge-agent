@@ -344,3 +344,21 @@ Commands of Task B (from TrueForge's events, classified with the real allow-list
 
 Spend of this run: counted from TrueForge session records (3 session(s), 15 turn(s)): 567,490 tokens = $0.05 at $0.08 per million tokens. Auto-allow switches: both ON.
 
+## 2026-11-04 12:00 (UI layer, cold-start lens, hermetic, Playwright)
+
+cold start, mode "immediate": 10 of 10 launches showed the lens within 10 s (min 524 ms / median 549 ms / max 585 ms)
+
+Per launch (ms): 585, 568, 525, 524, 561, 547, 538, 549, 546, 573
+
+## 2026-11-04 12:00 (UI layer, cold-start lens, hermetic, Playwright)
+
+cold start, mode "panel": 5 of 5 launches showed the lens within 10 s (min 503 ms / median 507 ms / max 512 ms)
+
+Per launch (ms): 507, 506, 512, 503, 512
+
+## 2026-11-04 12:00 (UI layer, cold-start lens, hermetic, Playwright)
+
+cold start, mode "delayed": 5 of 5 launches showed the lens within 10 s (min 510 ms / median 518 ms / max 535 ms)
+
+Per launch (ms): 519, 510, 518, 535, 516
+

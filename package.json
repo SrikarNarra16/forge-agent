@@ -262,6 +262,8 @@
     "test:ui": "tsx e2e/ui/run.ts b",
     "test:ui:panel": "tsx e2e/ui/panel.ts",
     "test:ui:lens": "tsx e2e/ui/lensLoop.ts",
+    "test:ui:cold": "tsx e2e/ui/coldStart.ts",
+    "test:vsix": "tsx e2e/ui/vsixCheck.ts",
     "e2e:rehearsal": "tsx e2e/ui/run.ts rehearsal"
   },
   "dependencies": {
