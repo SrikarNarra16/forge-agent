@@ -1,7 +1,8 @@
 /**
  * Timing report of the rehearsal (pure, so it is unit-tested): the driver records WHEN things happened (instruction
- * sent, first diff visible, result verified); the Forge output log says WHAT happened in between (model calls, tool
- * calls, tokens, commands that were auto-allowed). Log lines are `<ISO time> [level] message` (src/util/log.ts).
+ * sent, first diff visible, result verified); TrueForge's session records say WHAT happened (model messages, tool calls,
+ * tokens, the commands the model ran; e2e/ui/usage.ts); the Forge output log only says which commands were auto-allowed.
+ * Log lines are `<ISO time> [level] message` (src/util/log.ts).
  */
 export interface LogLine {
   at: number;
@@ -17,31 +18,17 @@ export function parseForgeLog(text: string): LogLine[] {
   return out;
 }
 
-export interface LogCounts {
-  modelCalls: number;
-  toolCalls: number;
-  inputTokens: number;
-  outputTokens: number;
-  autoAllowed: number;
+/** Commands that the log says were auto-allowed inside a window (the log is the only place that knows). */
+export function autoAllowedInWindow(lines: readonly LogLine[], from: number, to: number): number {
+  return lines.filter((l) => l.at >= from && l.at <= to && l.msg.startsWith("run_command auto-allowed (tier")).length;
 }
 
-/** Counts what the log says happened in [from, to] (epoch ms, inclusive). */
-export function countInWindow(lines: readonly LogLine[], from: number, to: number): LogCounts {
-  const c: LogCounts = { modelCalls: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, autoAllowed: 0 };
-  for (const { at, msg } of lines) {
-    if (at < from || at > to) continue;
-    if (msg.startsWith("  tool call ")) c.toolCalls++;
-    else if (msg.startsWith("run_command auto-allowed (tier")) c.autoAllowed++;
-    else {
-      const u = /^ {2}usage: (\d+) model call\(s\), (\d+) input tokens, (\d+) output tokens$/.exec(msg);
-      if (u) {
-        c.modelCalls += Number(u[1]);
-        c.inputTokens += Number(u[2]);
-        c.outputTokens += Number(u[3]);
-      }
-    }
-  }
-  return c;
+/** What one task did, taken from TrueForge's own records (sessions, turns, events), not from the log. */
+export interface TaskCounts {
+  modelCalls: number;
+  toolCalls: number;
+  tokens: number;
+  autoAllowed: number;
 }
 
 export interface TaskTimes {
@@ -68,7 +55,7 @@ export interface TimingRow {
   lensRetries: number;
 }
 
-export function timingRow(task: string, t: TaskTimes, counts: LogCounts, commandClicks: number, lensRetries = 0): TimingRow {
+export function timingRow(task: string, t: TaskTimes, counts: TaskCounts, commandClicks: number, lensRetries = 0): TimingRow {
   return {
     task,
     ...(t.firstDiffAt !== undefined ? { toDiff: (t.firstDiffAt - t.sentAt) / 1000, diffToVerified: (t.verifiedAt - t.firstDiffAt) / 1000 } : {}),
@@ -76,7 +63,7 @@ export function timingRow(task: string, t: TaskTimes, counts: LogCounts, command
     total: (t.verifiedAt - t.sentAt) / 1000,
     modelCalls: counts.modelCalls,
     toolCalls: counts.toolCalls,
-    tokens: counts.inputTokens + counts.outputTokens,
+    tokens: counts.tokens,
     autoAllowed: counts.autoAllowed,
     clicks: commandClicks,
     lensRetries,
@@ -116,7 +103,7 @@ export function commandsInWindow(lines: readonly LogLine[], from: number, to: nu
   const out: CommandRecord[] = [];
   for (const { msg } of inWindow) {
     if (!msg.startsWith("  tool call run_command(")) continue;
-    const m = /"command":"((?:[^"\\]|\\.)*)"/.exec(msg);
+    const m = /"command":\s*"((?:[^"\\]|\\.)*)"/.exec(msg);
     if (!m) continue;
     let command: string;
     try {

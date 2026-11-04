@@ -17,9 +17,9 @@ import { promisify } from "node:util";
 import { DEFAULT_SPEND_LIMIT_USD, appendLedger, checkLimits, estimatedSpendUsd, formatUsd, readLedger, totalsOf } from "../../scripts/eval/ledger";
 import { describeError } from "../../src/trueforge/client";
 import { BASE_URL, ROOT, createEnvironment, snapshotTrueForge, type E2eEnvironment } from "../env";
-import { fetchSessionUsage, type SessionUsage } from "./usage";
+import { fetchSessionDetails, fetchSessionUsage, sessionsInWindow, type SessionDetail, type SessionUsage } from "./usage";
 import { classifyCommand } from "../../src/mcp/commandAllow";
-import { commandReport, commandsInWindow, countInWindow, formatTimingTable, parseForgeLog, timingRow, type TimingRow } from "./timing";
+import { autoAllowedInWindow, commandReport, commandsInWindow, formatTimingTable, parseForgeLog, timingRow, type CommandRecord, type TimingRow } from "./timing";
 import { MOD, drive, gitStatus, launch, makeScreens, openPanel, panelFrame, readWorkspaceFile, sendPrompt, statusText, until, verify, type Launched, type Screens } from "./driver";
 
 const exec = promisify(execFile);
@@ -128,8 +128,11 @@ async function taskB(l: Launched, env: E2eEnvironment, screens: Screens, results
   results.push({ timing: timingOf(sentAt, log, Date.now(), v.ms), step: "Task B (panel)", ok: v.pass && log.lensSeen, detail: `${log.commandsAllowed} command card(s) allowed, ${log.reviewsApplied} review(s) applied (${log.appliedWithPanelButton} with the panel's "Apply accepted" button, the rest with ${MOD}+Enter), CodeLens text seen: ${log.lensSeen}; verify-task-b ${v.pass ? "PASS" : `FAIL\n${v.out.slice(-600)}`}`, seconds: (Date.now() - t0) / 1000 });
 }
 
-/** Reads the test instance's Forge log (temp user-data-dir) and fills each task's model/tool call counts; returns the token total and the report rows. */
-async function readCounts(env: E2eEnvironment, results: StepResult[]): Promise<{ tokens: number; rows: TimingRow[] }> {
+/**
+ * Fills each task's row from TrueForge's records (model messages, tool calls, tokens, the commands the model ran) and the
+ * Forge log (which commands were auto-allowed). Returns the report rows and the token total over the tasks that finished.
+ */
+async function readCounts(env: E2eEnvironment, results: StepResult[], details: readonly SessionDetail[]): Promise<{ tokens: number; rows: TimingRow[] }> {
   const logsDir = join(env.userData, "logs");
   let text = "";
   for (const rel of await readdir(logsDir, { recursive: true })) if (String(rel).endsWith("Forge.log")) text += `${await readFile(join(logsDir, String(rel)), "utf8")}\n`;
@@ -138,13 +141,18 @@ async function readCounts(env: E2eEnvironment, results: StepResult[]): Promise<{
   let tokens = 0;
   for (const r of results) {
     if (!r.timing) continue;
-    const c = countInWindow(lines, r.timing.sentAt - 2000, r.timing.verifiedAt);
-    r.timing.modelCalls = c.modelCalls;
-    r.timing.toolCalls = c.toolCalls;
-    r.timing.tokens = c.inputTokens + c.outputTokens;
-    r.timing.commandReport = commandReport(commandsInWindow(lines, r.timing.sentAt - 2000, r.timing.verifiedAt), (cmd) => classifyCommand(cmd) !== undefined);
-    tokens += r.timing.tokens;
-    rows.push(timingRow(r.step.replace(/ \(.*\)$/, ""), r.timing, c, r.timing.commandClicks, r.timing.lensRetries));
+    const mine = sessionsInWindow(details, r.timing.sentAt, r.timing.verifiedAt);
+    const sum = (f: (d: SessionDetail) => number): number => mine.reduce((n, d) => n + f(d), 0);
+    const autoAllowed = autoAllowedInWindow(lines, r.timing.sentAt - 2000, r.timing.verifiedAt);
+    const autoSet = new Set(commandsInWindow(lines, r.timing.sentAt - 2000, r.timing.verifiedAt).filter((c) => c.auto).map((c) => c.command));
+    const commands: CommandRecord[] = mine.flatMap((d) => d.commands).map((command) => ({ command, auto: autoSet.has(command.trim()) }));
+    const counts = { modelCalls: sum((d) => d.modelMessages), toolCalls: sum((d) => d.toolResponses), tokens: sum((d) => d.input + d.output), autoAllowed };
+    r.timing.modelCalls = counts.modelCalls;
+    r.timing.toolCalls = counts.toolCalls;
+    r.timing.tokens = counts.tokens;
+    r.timing.commandReport = commandReport(commands, (cmd) => classifyCommand(cmd) !== undefined);
+    tokens += counts.tokens;
+    rows.push(timingRow(r.step.replace(/ \(.*\)$/, ""), r.timing, counts, r.timing.commandClicks, r.timing.lensRetries));
   }
   return { tokens, rows };
 }
@@ -167,6 +175,7 @@ async function main(): Promise<number> {
   const env = await createEnvironment(autoAllow ? { extraSettings: { "forge.autoAllowCommands.readOnly": true, "forge.autoAllowCommands.tests": true } } : {});
   let counted: { tokens: number; rows: TimingRow[] } = { tokens: 0, rows: [] };
   let usage: SessionUsage | undefined;
+  let details: SessionDetail[] = [];
   const runStarted = Date.now();
   const screens = await makeScreens();
   const results: StepResult[] = [];
@@ -219,7 +228,11 @@ async function main(): Promise<number> {
       console.error(`could not read TrueForge's session records: ${describeError(err)}`);
       return undefined;
     });
-    counted = await readCounts(env, results).catch((err: unknown) => {
+    details = await fetchSessionDetails(BASE_URL, env.prefix).catch((err: unknown) => {
+      console.error(`could not read TrueForge's session details: ${describeError(err)}`);
+      return [] as SessionDetail[];
+    });
+    counted = await readCounts(env, results, details).catch((err: unknown) => {
       console.error(`could not read the Forge log: ${describeError(err)}`);
       return counted;
     });

@@ -323,3 +323,24 @@ Fake Proposal markers, plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hu
 | PASS | Accept all and apply | "Applied 3 of 3 hunks."; 3 new edits on disk |
 | PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
 
+## 2026-11-04 11:52 (UI layer, rehearsal A+B+C, Playwright)
+
+| Result | Step | Time | Detail |
+|---|---|---|---|
+| PASS | Task A (inline) | 7 s | 1 review(s) applied (1 with the panel button); verify-task-a PASS |
+| PASS | Task B (panel) | 118 s | 6 command card(s) allowed, 5 review(s) applied (5 with the panel's "Apply accepted" button, the rest with Meta+Enter), CodeLens text seen: true; verify-task-b PASS |
+| PASS | Task C (fallback) | 5 s | fallback notice shown; workspace pristine before the first apply; 1 review(s) applied; verify-task-a PASS |
+
+| Task | Instruction -> first diff | First diff -> verified | (of which verify script) | Instruction -> verified | Model calls | Tool calls | Tokens | Commands auto-allowed | Allow clicks | Diff reopened (lens retry) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Task A (inline) | 3.9 s | 1.9 s | 0.2 s | 5.8 s | 2 | 1 | 6,176 | 0 | 0 | 0 |
+| Task B (panel) | 43.6 s | 74.4 s | 1.1 s | 118.0 s | 24 | 37 | 555,114 | 0 | 6 | 0 |
+| Task C (fallback) | 2.6 s | 2.1 s | 0.1 s | 4.7 s | 2 | 1 | 6,200 | 0 | 0 | 0 |
+| **A+B+C** | **50.1 s** | **78.4 s** | 1.4 s | **128.5 s** | 28 | 39 | 567,490 | 0 | 6 | 0 |
+
+(The runner printed 233 model calls and 4.7M tokens for this run: its model-call and token columns came from a log line that repeats cumulative usage on every turn, which is wrong. The table above was rebuilt from TrueForge's own session records: model calls = `model.message` events, tool calls = `tool.response` events, tokens = turn metrics. The runner now reads those records and the faulty log line was removed. Tool calls matched the log's 37 for Task B.)
+
+Commands of Task B (from TrueForge's events, classified with the real allow-list; no-pipes rule unchanged): 6 run_command calls, 0 auto-allowed, 6 asked (100%): 5 x pipe or redirect (`... 2>&1 | tail -N`), 1 x multi-line `python -c` script (also chained `&&`/newline). With both switches ON, every one of the 6 command cards still needed a click. If one trailing `2>&1 | tail/head N` were allowed, 3 of the 6 would have matched; the other 3 (`--deselect`, `&& python -m flask --help | sed`, `python -c`) would still ask.
+
+Spend of this run: counted from TrueForge session records (3 session(s), 15 turn(s)): 567,490 tokens = $0.05 at $0.08 per million tokens. Auto-allow switches: both ON.
+
