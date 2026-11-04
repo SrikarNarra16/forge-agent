@@ -10,13 +10,14 @@
  * instruction. NOT automated: nothing the script cannot see (see docs/e2e.md for the known limits).
  * Output: e2e-output/screens/*.png and e2e-output/video/*.webm (1920x1080). Costs real tokens (estimated and guarded).
  */
-import { appendFile, readdir, rename } from "node:fs/promises";
+import { appendFile, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { DEFAULT_SPEND_LIMIT_USD, appendLedger, checkLimits, estimatedSpendUsd, formatUsd, readLedger, totalsOf } from "../../scripts/eval/ledger";
 import { describeError } from "../../src/trueforge/client";
 import { ROOT, createEnvironment, snapshotTrueForge, type E2eEnvironment } from "../env";
+import { countInWindow, formatTimingTable, parseForgeLog, timingRow, type TimingRow } from "./timing";
 import { MOD, drive, gitStatus, launch, makeScreens, openPanel, panelFrame, readWorkspaceFile, sendPrompt, statusText, until, verify, type Launched, type Screens } from "./driver";
 
 const exec = promisify(execFile);
@@ -25,12 +26,36 @@ const TASK_B_PROMPT =
   'Add a built-in CLI command `flask config` that prints the app config as JSON, masking the value of any key containing SECRET, PASSWORD, TOKEN, or KEY as "***". It must appear in `flask --help`, have a test, and be documented with the other built-in commands.';
 const ESTIMATED_TOKENS = { b: 1_000_000, rehearsal: 1_100_000 } as const;
 
+/** The timeline of one task, in epoch milliseconds, plus what the panel and the Forge log say about it. */
+interface TaskTiming {
+  sentAt: number;
+  firstReviewAt?: number;
+  firstDiffAt?: number;
+  verifiedAt: number;
+  verifyMs: number;
+  commandClicks: number;
+  commandsAutoAllowed: number;
+  reviewsApplied: number;
+  appliedWithPanelButton: number;
+  /** From the Forge log (filled in after the run). */
+  modelCalls?: number;
+  toolCalls?: number;
+  tokens?: number;
+}
+
 interface StepResult {
   step: string;
   ok: boolean;
   detail: string;
   seconds: number;
+  timing?: TaskTiming;
 }
+
+const timed = async (fn: () => Promise<{ pass: boolean; out: string }>): Promise<{ pass: boolean; out: string; ms: number }> => {
+  const t = Date.now();
+  const v = await fn();
+  return { ...v, ms: Date.now() - t };
+};
 
 async function selectGetDebugFlag(page: Launched["page"], env: E2eEnvironment): Promise<void> {
   const text = await readWorkspaceFile(env, "src/flask/helpers.py");
@@ -53,7 +78,8 @@ async function selectGetDebugFlag(page: Launched["page"], env: E2eEnvironment): 
   await page.keyboard.press("Shift+End");
 }
 
-async function inlineTaskA(page: Launched["page"], env: E2eEnvironment, frame: Awaited<ReturnType<typeof panelFrame>>, screens: Screens, tag: string): Promise<void> {
+/** Returns the moment the instruction was submitted (Enter in the instruction box). */
+async function inlineTaskA(page: Launched["page"], env: E2eEnvironment, frame: Awaited<ReturnType<typeof panelFrame>>, screens: Screens, tag: string): Promise<number> {
   await selectGetDebugFlag(page, env);
   await screens.shot(page, `${tag}-selection`);
   await page.keyboard.press(`${MOD}+Alt+K`);
@@ -62,7 +88,20 @@ async function inlineTaskA(page: Launched["page"], env: E2eEnvironment, frame: A
   await input.fill(TASK_A_INSTRUCTION);
   await page.keyboard.press("Enter");
   void frame;
+  return Date.now();
 }
+
+const timingOf = (sentAt: number, log: Awaited<ReturnType<typeof drive>>, verifiedAt: number, verifyMs: number): TaskTiming => ({
+  sentAt,
+  ...(log.firstReviewAt !== undefined ? { firstReviewAt: log.firstReviewAt } : {}),
+  ...(log.firstDiffAt !== undefined ? { firstDiffAt: log.firstDiffAt } : {}),
+  verifiedAt,
+  verifyMs,
+  commandClicks: log.commandsAllowed,
+  commandsAutoAllowed: log.commandsAutoAllowed,
+  reviewsApplied: log.reviewsApplied,
+  appliedWithPanelButton: log.appliedWithPanelButton,
+});
 
 async function resetWorkspace(env: E2eEnvironment): Promise<void> {
   await exec("git", ["checkout", "-q", "--", "."], { cwd: env.workspace.root });
@@ -74,12 +113,33 @@ async function taskB(l: Launched, env: E2eEnvironment, screens: Screens, results
   const frame = await openPanel(l.page);
   await screens.shot(l.page, "B-panel-open");
   await sendPrompt(frame, TASK_B_PROMPT);
+  const sentAt = Date.now();
   await frame.locator(".item.assistant").first().waitFor({ state: "visible", timeout: 120_000 });
   await screens.shot(l.page, "B-streaming");
   const log = await drive(l.page, frame, screens, { timeoutMs: 600_000 });
   await screens.shot(l.page, "B-done");
-  const v = await verify("task-b", env);
-  results.push({ step: "Task B (panel)", ok: v.pass && log.lensSeen, detail: `${log.commandsAllowed} command card(s) allowed, ${log.reviewsApplied} review(s) applied (${log.appliedWithPanelButton} with the panel's "Apply accepted" button, the rest with ${MOD}+Enter), CodeLens text seen: ${log.lensSeen}; verify-task-b ${v.pass ? "PASS" : `FAIL\n${v.out.slice(-600)}`}`, seconds: (Date.now() - t0) / 1000 });
+  const v = await timed(() => verify("task-b", env));
+  results.push({ timing: timingOf(sentAt, log, Date.now(), v.ms), step: "Task B (panel)", ok: v.pass && log.lensSeen, detail: `${log.commandsAllowed} command card(s) allowed, ${log.reviewsApplied} review(s) applied (${log.appliedWithPanelButton} with the panel's "Apply accepted" button, the rest with ${MOD}+Enter), CodeLens text seen: ${log.lensSeen}; verify-task-b ${v.pass ? "PASS" : `FAIL\n${v.out.slice(-600)}`}`, seconds: (Date.now() - t0) / 1000 });
+}
+
+/** Reads the test instance's Forge log (temp user-data-dir) and fills each task's model/tool call counts; returns the token total and the report rows. */
+async function readCounts(env: E2eEnvironment, results: StepResult[]): Promise<{ tokens: number; rows: TimingRow[] }> {
+  const logsDir = join(env.userData, "logs");
+  let text = "";
+  for (const rel of await readdir(logsDir, { recursive: true })) if (String(rel).endsWith("Forge.log")) text += `${await readFile(join(logsDir, String(rel)), "utf8")}\n`;
+  const lines = parseForgeLog(text);
+  const rows: TimingRow[] = [];
+  let tokens = 0;
+  for (const r of results) {
+    if (!r.timing) continue;
+    const c = countInWindow(lines, r.timing.sentAt - 2000, r.timing.verifiedAt);
+    r.timing.modelCalls = c.modelCalls;
+    r.timing.toolCalls = c.toolCalls;
+    r.timing.tokens = c.inputTokens + c.outputTokens;
+    tokens += r.timing.tokens;
+    rows.push(timingRow(r.step.replace(/ \(.*\)$/, ""), r.timing, c, r.timing.commandClicks));
+  }
+  return { tokens, rows };
 }
 
 async function main(): Promise<number> {
@@ -95,7 +155,11 @@ async function main(): Promise<number> {
   }
   if (!(await snapshotTrueForge())) throw new Error("TrueForge is not reachable; start it with npm run tf:start");
 
-  const env = await createEnvironment();
+  // The rehearsal runs with both opt-in auto-allow switches ON (docs/approval-friction.md); `test:ui` leaves them off.
+  const autoAllow = mode === "rehearsal" && process.env["FORGE_UI_AUTOALLOW"] !== "0";
+  const env = await createEnvironment(autoAllow ? { extraSettings: { "forge.autoAllowCommands.readOnly": true, "forge.autoAllowCommands.tests": true } } : {});
+  let counted: { tokens: number; rows: TimingRow[] } = { tokens: 0, rows: [] };
+  const runStarted = Date.now();
   const screens = await makeScreens();
   const results: StepResult[] = [];
   let launched: Launched | undefined;
@@ -108,10 +172,10 @@ async function main(): Promise<number> {
       // --- Task A (inline edit) ---
       let t0 = Date.now();
       const frame = await openPanel(l.page);
-      await inlineTaskA(l.page, env, frame, screens, "A");
+      const sentA = await inlineTaskA(l.page, env, frame, screens, "A");
       const logA = await drive(l.page, frame, screens, { timeoutMs: 180_000 });
-      const vA = await verify("task-a", env);
-      results.push({ step: "Task A (inline)", ok: vA.pass && logA.lensSeen, detail: `${logA.reviewsApplied} review(s) applied (${logA.appliedWithPanelButton} with the panel button); verify-task-a ${vA.pass ? "PASS" : `FAIL\n${vA.out.slice(-500)}`}`, seconds: (Date.now() - t0) / 1000 });
+      const vA = await timed(() => verify("task-a", env));
+      results.push({ timing: timingOf(sentA, logA, Date.now(), vA.ms), step: "Task A (inline)", ok: vA.pass && logA.lensSeen, detail: `${logA.reviewsApplied} review(s) applied (${logA.appliedWithPanelButton} with the panel button); verify-task-a ${vA.pass ? "PASS" : `FAIL\n${vA.out.slice(-500)}`}`, seconds: (Date.now() - t0) / 1000 });
       await screens.shot(l.page, "A-done");
       await resetWorkspace(env);
 
@@ -124,14 +188,14 @@ async function main(): Promise<number> {
       await env.updateSettings({ "forge.models": ["broken-endpoint/broken", "deepseek/flash"] });
       await until("VS Code to pick up the new forge.models", async () => true, 1000);
       const frameC = await panelFrame(l.page);
-      await inlineTaskA(l.page, env, frameC, screens, "C");
+      const sentC = await inlineTaskA(l.page, env, frameC, screens, "C");
       await frameC.getByText(/switched to deepseek\/flash/).first().waitFor({ state: "visible", timeout: 120_000 }); // the fallback notice in the panel
       await screens.shot(l.page, "C-fallback-notice");
       await frameC.locator(".queue-row.state-reviewing").first().waitFor({ state: "visible", timeout: 120_000 });
       const pristine = await gitStatus(env);
       const logC = await drive(l.page, frameC, screens, { timeoutMs: 180_000 });
-      const vC = await verify("task-a", env);
-      results.push({ step: "Task C (fallback)", ok: pristine === "" && vC.pass, detail: `fallback notice shown; workspace ${pristine === "" ? "pristine before the first apply" : `NOT pristine: ${pristine}`}; ${logC.reviewsApplied} review(s) applied; verify-task-a ${vC.pass ? "PASS" : "FAIL"}`, seconds: (Date.now() - t0) / 1000 });
+      const vC = await timed(() => verify("task-a", env));
+      results.push({ timing: timingOf(sentC, logC, Date.now(), vC.ms), step: "Task C (fallback)", ok: pristine === "" && vC.pass, detail: `fallback notice shown; workspace ${pristine === "" ? "pristine before the first apply" : `NOT pristine: ${pristine}`}; ${logC.reviewsApplied} review(s) applied; verify-task-a ${vC.pass ? "PASS" : "FAIL"}`, seconds: (Date.now() - t0) / 1000 });
       await screens.shot(l.page, "C-done");
     } else {
       await taskB(l, env, screens, results);
@@ -142,17 +206,30 @@ async function main(): Promise<number> {
     if (launched) await screens.shot(launched.page, "failure").catch(() => undefined);
   } finally {
     await launched?.app.close().catch(() => undefined); // finalises the video
+    counted = await readCounts(env, results).catch((err: unknown) => {
+      console.error(`could not read the Forge log: ${describeError(err)}`);
+      return counted;
+    });
     const videoDir = join(ROOT, "e2e-output", "video");
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     for (const f of await readdir(videoDir).catch(() => [] as string[])) if (f.endsWith(".webm") && !f.startsWith("ui-")) await rename(join(videoDir, f), join(videoDir, `ui-${mode}-${stamp}.webm`)).catch(() => undefined);
     await env.cleanup();
   }
 
-  await appendLedger(ledgerFile, { runId: `ui-${mode}-${process.pid}`, task: "ui", model: "deepseek/*", attempt: 1, input: estimate, output: 0, at: new Date().toISOString() });
+  const measured = counted.tokens > 0;
+  const spendTokens = measured ? counted.tokens : estimate;
+  await appendLedger(ledgerFile, { runId: `ui-${mode}-${process.pid}`, task: "ui", model: "deepseek/*", attempt: 1, input: spendTokens, output: 0, at: new Date().toISOString() });
+  const wallClock = (Date.now() - runStarted) / 1000;
+  const timing = counted.rows.length > 0 ? formatTimingTable(counted.rows) : "";
+  const spend = `Spend of this run: ${measured ? "counted from the Forge log" : "ESTIMATE (the log could not be read)"}: ${spendTokens.toLocaleString("en-US")} tokens = ${formatUsd(estimatedSpendUsd(spendTokens))} at $0.08 per million tokens`;
+  if (timing) {
+    console.log(`\n${timing}\n\n${spend}\nAuto-allow switches: ${autoAllow ? "both ON" : "off"}. Whole script wall-clock (launch to close): ${wallClock.toFixed(0)} s.`);
+    await writeFile(join(ROOT, "e2e-output", `rehearsal-timing.json`), JSON.stringify({ at: new Date().toISOString(), autoAllow, tokens: spendTokens, measured, rows: counted.rows }, null, 2), "utf8");
+  }
   const rows = results.map((r) => `| ${r.ok ? "PASS" : "FAIL"} | ${r.step} | ${r.seconds.toFixed(0)} s | ${r.detail.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 400)} |`);
   const table = ["| Result | Step | Time | Detail |", "|---|---|---|---|", ...rows].join("\n");
   console.log(`\n${table}\n\nScreenshots: e2e-output/screens/   Video: e2e-output/video/ (1920x1080)`);
-  await appendFile(join(ROOT, "docs", "e2e-results.md"), `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} (UI layer, ${mode === "b" ? "Task B smoke test" : "rehearsal A+B+C"}, Playwright)\n\n${table}\n\n`, "utf8");
+  await appendFile(join(ROOT, "docs", "e2e-results.md"), `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} (UI layer, ${mode === "b" ? "Task B smoke test" : "rehearsal A+B+C"}, Playwright)\n\n${table}\n\n${timing ? `${timing}\n\n${spend}. Auto-allow switches: ${autoAllow ? "both ON" : "off"}.\n\n` : ""}`, "utf8");
   return results.every((r) => r.ok) ? 0 : 1;
 }
 

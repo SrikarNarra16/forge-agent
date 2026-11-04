@@ -15,14 +15,25 @@ So by count, `run_command` is 46% of approvals (57 of 124), but by clicks it doe
 - 3: purely read-only (`git log`, `git status`, `grep`) plus about 5 more `grep`/`head` lines my simple classifier counted as other because of quoted pipes.
 - About 10: `python -m flask --help` / `flask --app ... config` (the agent trying its new command; this executes project code).
 
-## Proposal (not implemented): a small opt-in allow-list for read-only and verification commands
-A setting `forge.autoAllowCommands` (default **off**), with two tiers, applied AFTER the existing denylist (`checkCommand`), never instead of it:
-1. **Read-only, no project code executed**: `git status`, `git diff`, `git log`, `git show`, `git ls-files`, `ls`, `pwd`, `cat`/`head`/`tail`/`wc`/`grep`/`rg` on workspace paths. Safe because they cannot change anything and `read_file`/`search_code` already expose the same content.
-2. **Verification, runs the project's own code**: `pytest` / `python -m pytest`, `ruff check` (without `--fix`), `mypy`. These write only caches (`.pytest_cache`, `__pycache__`, already ignored) but they DO execute workspace code, including tests the agent just wrote and you approved in a diff. That is the same risk as running the tests yourself, so I would make tier 2 a separate switch.
+## Implemented (4 Nov 2026): `forge.autoAllowCommands.readOnly` and `.tests`, both default OFF
+Code: `src/mcp/commandAllow.ts`, wired in `CommandApprovalHandler` (`src/trueforge/commandApprovals.ts`). 138 table-driven tests (`test/commandAllow.test.ts`, 100+ explicit command cases) plus handler tests.
 
-Safety rules for both: the whole command must match, not just its first word. Any `;`, `&&`, `||`, `|` to something outside the list, redirections (`>`, `>>`), `$(...)`/backticks, `sudo`, `rm`, `--fix`/`--write`/`-i` style flags, `-exec`/`-delete`, or a path outside the workspace falls back to the normal Allow card. The auto-allowed command still appears in the transcript with its output and is still subject to the timeout and Stop. A command the user denied earlier in the run is never auto-allowed.
+**Order of checks**: denylist (`checkCommand`) first, then, only if a switch is on, the allow pattern, otherwise the normal Allow card. A command that matches is allowed with a ticket exactly as if you had clicked Allow, so the run_command tool and the instant-Stop path behave the same.
 
-Expected effect on Task B: tier 1 alone saves about 0-1 click per run (almost nothing); tier 1 + 2 would remove about 2.6 of 3.8 clicks per run. Your call whether tier 2 is worth the extra trust.
+**Matching is on the whole command, as the agent wrote it.** The venv prefix (`. .venv/bin/activate &&`) is added by the command runner after approval, so it cannot break or fake a match.
 
-## Another option, cheaper and safer: "Accept all and apply"
-An optional third button in the review card would turn the common path (accept every hunk) from 2 actions into 1. It uses the same commands (`forge.reviewAcceptAll` then `forge.reviewApply`). Not added because the request asked for exactly Apply accepted / Reject all.
+| Tier | Recognised (nothing else) | Why it is safe, and what is the risk |
+|---|---|---|
+| 1 `readOnly` | `git status/diff/log/show/ls-files` with whitelisted options, `ls`, `pwd`, `cat`, `head -n`, `tail -n`, `wc`, `grep` (no `-r/-R/-e/-f`), `rg` (no `--pre/-r/-L`), on workspace paths | change nothing, execute no project code. They can read any non-secret workspace file, which `read_file` can too. Paths with `.env*`, `.git`, `.ssh`, `.venv`, `node_modules`, key files are refused. |
+| 2 `tests` | `pytest` / `python -m pytest` (whitelisted options, `-k`/`-m` expressions, workspace paths and node ids), `ruff check` (never `--fix`), `mypy` / `python -m mypy` on workspace paths | **They run workspace code.** pytest imports and executes your tests and `conftest.py`, including tests the agent just wrote and you approved in a diff; mypy loads plugins named in its config. They write only caches. This is the same risk as running them yourself, but without a prompt. A malicious repository could use this; that is why tier 2 is a separate switch and off by default. |
+
+**Always falls back to the Allow card**: `&&`, `;`, `|`, `&`, newlines, any redirect (`>`, `<`, `2>&1`), `$( )`, `$VAR`, backticks, backslashes, `!`, `#`, parentheses/braces, unquoted globs, `~`, leading `VAR=value`, `env`/`sudo`, unknown programs or options, write flags (`--fix`, `--add-noqa`, `-o`, `--output`, `--junitxml`, `--basetemp`, `--cache-dir`), code-loading flags (`-p`, `-c`, `--pyargs`, `-p` for mypy, `--pre`, `git -c`, `--ext-diff`), absolute paths, `..` segments, secrets, and a quoted `|` or `;` (strict on purpose). A command you denied earlier in the same run always asks again.
+
+**Shown, never hidden**: the command card carries an `auto-allowed (tier N)` badge and says "Auto-allowed (tier N: ...) by your forge.autoAllowCommands setting; you were not asked." Each one is also logged in the Forge output ("run_command auto-allowed (tier 1: read-only, git status): ...").
+
+**Known limits**: a symlink inside the workspace that points outside it is not detected (the matcher has no file-system access); repository-level git configuration (`diff.<driver>.textconv`) would run a program on `git diff`, but that lives in `.git/config`, which a clone does not bring.
+
+**How much it helps (measured on the 57 recorded Task B commands)**: with both tiers on, 19 of 57 (33%) would be auto-allowed, all of them tier 2 (plain `pytest ...`, `ruff check ...`); tier 1 matched 0, because the agent's reads go through `read_file`/`search_code`. 38 still ask, and 35 of those end in `2>&1 | tail -N` or `| head -N`, which the strict rule refuses on purpose. Allowing exactly one trailing `2>&1 | tail -N` / `| head -N` would lift the coverage to 38 of 57 (67%), measured by re-classifying the same commands with that suffix removed; that is a decision for you because it relaxes the "no pipes" rule. Changing the agent's instructions to run `python -m pytest <path> -q` without the pipe would do the same without touching the matcher, but the instructions are frozen and tagged (`task-b-tuned`), so I did not.
+
+## "Accept all and apply" (implemented)
+The review card has a third button that accepts every UNDECIDED hunk (a hunk you rejected stays rejected) and then runs the same apply as "Apply accepted", turning the common path from 2 actions into 1 click.

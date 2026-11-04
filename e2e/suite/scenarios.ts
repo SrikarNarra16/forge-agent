@@ -227,6 +227,67 @@ const panelButtons: Scenario = {
   },
 };
 
+/** The panel's "Accept all and apply": the undecided hunks are accepted (a rejected one stays rejected), then the same apply as everywhere else. No model. */
+const acceptAllAndApply: Scenario = {
+  id: "13",
+  name: "Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores",
+  live: false,
+  async run(cfg) {
+    const file = `${cfg.workspace}/src/flask/helpers.py`;
+    const click = (message: unknown): Thenable<unknown> => vscode.commands.executeCommand("forge.e2e.panelMessage", { message });
+    const marksOnDisk = async (): Promise<string> => {
+      const text = await readFile(file, "utf8");
+      return [1, 2, 3].filter((n) => text.includes(`forge fake proposal ${n}`)).join(",") || "none";
+    };
+    const finished = (count: number): Promise<E2eState["review"][number]> =>
+      waitFor("the review to finish", async () => {
+        const st = await state();
+        const r = st.review.at(-1);
+        return st.review.length > count && r && ["applied", "rejected", "failed", "cancelled"].includes(r.state) ? r : undefined;
+      }, 20_000, 50);
+
+    // round 1: hunk 1 rejected by hand, 2 and 3 undecided
+    await resetWorkspace(cfg);
+    const editor = await openFile(cfg, "src/flask/helpers.py");
+    const before = editor.document.getText();
+    let count = (await state()).review.length;
+    await startFakeProposal(cfg);
+    const first = (await state()).review.at(-1);
+    assert(first, "no review shown");
+    await vscode.commands.executeCommand("forge.reviewRejectHunk", first.callId, 0);
+    await waitFor("the panel to show 1 rejected", async () => ((await state()).review.at(-1)?.rejected === 1 ? true : undefined), 10_000, 50);
+    await click({ type: "reviewAcceptAllApply", callId: first.callId });
+    const r1 = await finished(count);
+    assert(r1.state === "applied" && r1.applied === 2 && r1.hunks === 3, `round 1: expected applied 2 of 3, got ${r1.state} ${r1.applied ?? "?"} of ${r1.hunks ?? "?"}${r1.detail ? ` (${r1.detail})` : ""}`);
+    assert((await marksOnDisk()) === "2,3", `round 1: expected hunks 2 and 3 on disk (hunk 1 was rejected), found ${await marksOnDisk()}`);
+    await click({ type: "reviewAcceptAllApply", callId: first.callId }); // a stale click on a finished review does nothing
+    assert((await marksOnDisk()) === "2,3", "a stale Accept-all-and-apply click changed the file");
+
+    // round 2: everything undecided
+    await resetWorkspace(cfg);
+    const editor2 = await openFile(cfg, "src/flask/helpers.py");
+    const before2 = editor2.document.getText();
+    assert(before2 === before, "the workspace was not reset between rounds");
+    count = (await state()).review.length;
+    await startFakeProposal(cfg);
+    const second = (await state()).review.at(-1);
+    assert(second, "no second review shown");
+    await click({ type: "reviewAcceptAllApply", callId: second.callId });
+    const r2 = await finished(count);
+    assert(r2.state === "applied" && r2.applied === 3 && r2.hunks === 3, `round 2: expected applied 3 of 3, got ${r2.state} ${r2.applied ?? "?"} of ${r2.hunks ?? "?"}`);
+    assert((await marksOnDisk()) === "1,2,3", `round 2: expected all three edits on disk, found ${await marksOnDisk()}`);
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+    assert(!doc.isDirty, "the document is dirty after the apply");
+    await vscode.window.showTextDocument(doc);
+    await vscode.commands.executeCommand("undo"); // ONE undo
+    const afterUndo = vscode.window.activeTextEditor?.document.getText() ?? doc.getText();
+    assert(afterUndo === before, "one undo after 'Accept all and apply' did not restore the pre-apply text");
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    await resetWorkspace(cfg);
+    return { detail: "round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text" };
+  },
+};
+
 /** Counts lines of the test instance\'s Forge output channel log that match (the log lives in the temp user-data-dir). */
 async function countForgeLog(cfg: E2eConfig, pattern: RegExp): Promise<number> {
   if (!cfg.userDataDir) return 0;
@@ -402,6 +463,6 @@ const brokenOnly: Scenario = {
   },
 };
 
-export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, rejectHunkLoop, panelButtons, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
+export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, rejectHunkLoop, panelButtons, acceptAllAndApply, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
 export { noHooksNote, resetWorkspace, sleep };
 export type { ScenarioResult };

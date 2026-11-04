@@ -45,6 +45,20 @@ Headless check: `npm run eval -- --task a --fail-primary --runs 3` (and `--chain
 
 The TrueForge resources Forge registers (`forge-editor`, `forge-editor-extras`, `forge-agent`, `forge-inline`) can be given a prefix with the `forge.resourcePrefix` setting (or the `FORGE_RESOURCE_PREFIX` environment variable, which wins), e.g. `win2-` registers `win2-forge-editor`, `win2-forge-agent` and so on. Two VS Code windows with different prefixes can run against one TrueForge without touching each other's resources; reload the window after changing it. The committed `agents/*.json` keep the default names (the prefix is applied when they are loaded). The end-to-end tests use `e2e-<pid>-` (docs/e2e.md).
 
+## Settings that change how commands run
+
+| Setting | Default | What it does |
+|---|---|---|
+| `forge.commandPrefix` | empty | Shell prefix run before every command the agent runs. **Empty = auto-detect**: if the workspace has `.venv/bin/activate` (else `venv/bin/activate`), Forge uses `. .venv/bin/activate &&` (the POSIX dot, so it works under dash, bash and zsh). A value you set always wins; `true &&` turns activation off. The effective prefix is shown in the panel's Context section. Windows layouts (`Scripts\activate`) are not detected: commands run through a POSIX shell, so set the prefix yourself. |
+| `forge.autoAllowCommands.readOnly` | **off** | Tier 1: run `git status/diff/log/show/ls-files`, `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep` (no `-r`) and `rg` on workspace paths without asking. They change nothing and run no project code. |
+| `forge.autoAllowCommands.tests` | **off** | Tier 2: run `pytest` / `python -m pytest`, `ruff check` (never `--fix`) and `mypy` without asking. **Risk: these run workspace code** (pytest imports and executes your tests and `conftest.py`, including tests the agent just wrote; mypy loads the plugins named in its config). That is the same as running them yourself, but without a prompt. |
+
+How the allow-list stays strict (details and measurements: docs/approval-friction.md): it is applied after the denylist; the WHOLE command must match a fixed pattern, so any chaining (`&&`, `;`, `|`, newline), redirect, `$( )`, backtick, `sudo`, `rm`, write flag (`--fix`, `-o`, `--junitxml`, `--output`...), unknown option, path outside the workspace or secrets file (`.env*`, `.git`, keys) falls back to the normal Allow card. The venv prefix Forge adds is not part of matching. Auto-allowed commands are marked `auto-allowed (tier 1|2)` on their card in the panel and logged; a command you denied earlier in the run always asks again. Known limit: a symlink inside the workspace that points outside it is not detected.
+
+## The review card in the panel
+
+While a change waits for review, the card above the transcript shows "N of M hunks accepted, K undecided" and three buttons: **Accept all and apply** (accepts the undecided hunks, a hunk you rejected stays rejected, then applies), **Apply accepted** (undecided hunks count as rejected and are not written) and **Reject all**. All of them run the same commands as Cmd/Ctrl+Enter and the CodeLens, so there is one way to write a file and one undo step. The header's **Open in TrueForge** opens the current run's session in the TrueForge UI.
+
 ## Development
 
 `npm run build | typecheck | lint | test | package`; end-to-end tests in a real VS Code: `npm run test:e2e`, `npm run test:ui`, `npm run e2e:rehearsal` (docs/e2e.md).

@@ -99,6 +99,10 @@ export class ActivityLog implements UiSink {
     if (change.done && view.done && this.once(`done:${view.done.status}:${view.done.completedAt}`)) {
       const done = view.done;
       const answer = done.status === "done" && done.output ? messageText(done.output.content) : "";
+      // one machine-readable line per turn: the rehearsal timing report counts model calls and tokens from it
+      const input = view.usage.reduce((n, u) => n + u.inputTokens, 0);
+      const output = view.usage.reduce((n, u) => n + (u.outputTokens ?? 0), 0);
+      this.log.info(`  usage: ${view.usage.length} model call(s), ${input} input tokens, ${output} output tokens`);
       this.log.info(`  turn.done status=${done.status}${done.status === "error" ? ` message=${done.message}` : ""}${answer ? ` answer="${preview(answer, 400)}"` : ""}`);
     }
   }

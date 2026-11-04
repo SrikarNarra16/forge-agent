@@ -116,6 +116,11 @@ export interface DriveLog {
   /** How many of those were applied with the panel's "Apply accepted" button (the rest with Cmd/Ctrl+Enter, the fallback). */
   appliedWithPanelButton: number;
   lensSeen: boolean;
+  /** Epoch ms: the first review entry appeared in the panel queue, and the first diff with its CodeLens was visible. */
+  firstReviewAt?: number;
+  firstDiffAt?: number;
+  /** Cards that the extension marked "auto-allowed (tier N)" (counted from the panel at the end). */
+  commandsAutoAllowed: number;
 }
 
 /**
@@ -123,12 +128,18 @@ export interface DriveLog {
  * CodeLens "Accept all" in the diff and the panel's "Apply accepted" button (Cmd+Enter only as a fallback). Returns when the panel says Done / Error / Stopped.
  */
 export async function drive(page: Page, frame: Frame, screens: Screens, options: { timeoutMs: number; prefix?: string }): Promise<DriveLog> {
-  const log: DriveLog = { commandsAllowed: 0, reviewsApplied: 0, appliedWithPanelButton: 0, lensSeen: false };
+  const log: DriveLog = { commandsAllowed: 0, reviewsApplied: 0, appliedWithPanelButton: 0, lensSeen: false, commandsAutoAllowed: 0 };
   const deadline = Date.now() + options.timeoutMs;
   let shotCommand = false;
   while (Date.now() < deadline) {
     const status = await statusText(frame);
-    if (["Done", "Error", "Stopped"].includes(status) && (await frame.locator(".queue-row.state-reviewing").count()) === 0) return log;
+    if (["Done", "Error", "Stopped"].includes(status) && (await frame.locator(".queue-row.state-reviewing").count()) === 0) {
+      log.commandsAutoAllowed = await frame.locator(".item.tool .badge.auto-allowed").count().catch(() => 0);
+      return log;
+    }
+
+    // the first review's diff opens by itself; note the moment its CodeLens shows (not when this loop gets around to clicking)
+    if (log.firstDiffAt === undefined && (await page.getByText("Accept hunk").first().isVisible().catch(() => false))) log.firstDiffAt = Date.now();
 
     const allow = frame.locator(".approval button.primary:not([disabled])", { hasText: "Allow" }).first(); // a decided card keeps its (disabled) buttons
     if (await allow.isVisible().catch(() => false)) {
@@ -143,9 +154,11 @@ export async function drive(page: Page, frame: Frame, screens: Screens, options:
 
     const row = frame.locator(".queue-row.state-reviewing").first();
     if (await row.isVisible().catch(() => false)) {
+      log.firstReviewAt ??= Date.now();
       await row.click(); // "Review diff" from the queue
       const lens = page.getByText("Accept hunk").first();
       await lens.waitFor({ state: "visible", timeout: 30_000 }); // CodeLens rendered in the real diff editor
+      log.firstDiffAt ??= Date.now();
       if (!log.lensSeen) {
         log.lensSeen = true;
         await screens.shot(page, "diff-with-codelens");

@@ -98,7 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // every command that starts counts as a side effect for the model chain (it may have changed anything)
   const terminal = { started: (c: string) => (sideEffects.recordCommand(c), terminalOutput.started(c)), output: (c: string) => terminalOutput.output(c), finished: (r: Parameters<TerminalOutput["finished"]>[0]) => terminalOutput.finished(r) };
   context.subscriptions.push(terminalOutput);
-  // forge.commandPrefix wins; when empty and the workspace has .venv/bin/activate (or venv/), commands run after `source <dir>/bin/activate &&`.
+  // forge.commandPrefix wins; when empty and the workspace has .venv/bin/activate (or venv/), commands run after `. <dir>/bin/activate &&`.
   const prefixResolver = new CommandPrefixResolver(host, () => vscode.workspace.getConfiguration("forge").get<string>("commandPrefix", ""));
   const commands = new NodeCommandRunner({ getPrefix: () => prefixResolver.effective().prefix });
   const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, editor: new VscodeEditorUi(host), run: { isCancelled: () => registry.isCancelled(), signal: () => registry.signal }, tickets, log: (m) => log.info(m) });
@@ -111,6 +111,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // The Agent panel and its controller. The panel is the UiSink and the generic Allow/Deny ApprovalHandler;
   // propose_edit / create_file are routed to the diff review instead.
+  // Opt-in, both default off: see src/mcp/commandAllow.ts and docs/approval-friction.md. Read at every approval.
+  const autoAllowSettings = (): { readOnly: boolean; tests: boolean } => {
+    const cfg = vscode.workspace.getConfiguration("forge");
+    return { readOnly: cfg.get<boolean>("autoAllowCommands.readOnly", false) === true, tests: cfg.get<boolean>("autoAllowCommands.tests", false) === true };
+  };
   const e2e = process.env["FORGE_E2E"] === "1"; // test hooks exist only in end-to-end test runs
   const recorder = e2e ? new E2eRecorder() : undefined;
   const panel = new PanelUi(log, tracker);
@@ -122,7 +127,7 @@ export function activate(context: vscode.ExtensionContext): void {
       new Map<string, ApprovalHandler>([
         ["propose_edit", reviewHandler],
         ["create_file", reviewHandler],
-        ["run_command", new CommandApprovalHandler({ inner: panel, getRunId: () => runScope.runId, getRoot: () => host.rootPath(), tickets, registry, log: (m) => log.info(m) })],
+        ["run_command", new CommandApprovalHandler({ inner: panel, getRunId: () => runScope.runId, getRoot: () => host.rootPath(), tickets, registry, log: (m) => log.info(m), autoAllow: autoAllowSettings, onAutoAllowed: (call, match) => panel.noteAutoAllowed(call.id, match.tier) })],
       ]),
       panel,
     ),
@@ -216,6 +221,9 @@ export function activate(context: vscode.ExtensionContext): void {
     undoRun: () => void undoLastRun(),
     // The panel buttons run the SAME commands as Cmd+Enter and the CodeLens: no second write path.
     applyReview: (callId) => void vscode.commands.executeCommand("forge.reviewApply", callId),
+    // "Accept all and apply": accept what is still undecided (a rejected hunk stays rejected), then the same apply command
+    acceptAllAndApply: (callId) =>
+      void Promise.resolve(vscode.commands.executeCommand("forge.reviewAcceptPending", callId)).then(() => vscode.commands.executeCommand("forge.reviewApply", callId)),
     rejectReview: (callId) => void vscode.commands.executeCommand("forge.reviewRejectAll", callId),
     openTrueForge: () => void vscode.env.openExternal(vscode.Uri.parse(trueForgeLink(status.baseUrl, controller.sessionId))),
   });

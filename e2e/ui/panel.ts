@@ -11,7 +11,8 @@
  *   3. Fake Proposal -> the queue card says "0 of 3 hunks accepted, 3 undecided", Apply accepted is disabled
  *   4. CodeLens "Accept hunk" on one hunk -> "1 of 3 hunks accepted, 2 undecided" + the note that undecided hunks are not applied
  *   5. click "Apply accepted" in the panel -> "Applied 1 of 3 hunks; 2 not applied (rejected or undecided)." and 2 edits on disk
- *   6. Fake Proposal again -> click "Reject all" in the panel -> "Rejected: nothing was written." and git clean
+ *   6. Fake Proposal again -> click "Reject all" in the panel -> "Rejected: nothing was written."
+ *   7. Fake Proposal once more -> click "Accept all and apply" -> "Applied 3 of 3 hunks." and three edits on disk
  */
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -51,7 +52,7 @@ async function main(): Promise<number> {
     await until("the Context summary to mention the auto-activated venv", async () => ((await context.locator("summary").textContent()) ?? "").includes("venv auto-activated"), 30_000, 300);
     await context.locator("summary").click();
     const prefixText = ((await context.locator(".ctx-prefix").textContent()) ?? "").trim();
-    check("command prefix shown", prefixText === "Commands run with: source .venv/bin/activate &&", `"${prefixText}"`);
+    check("command prefix shown", prefixText === "Commands run with: . .venv/bin/activate &&", `"${prefixText}"`);
     await screens.shot(page, "panel-prefix");
 
     // 2. Open in TrueForge exists (not clicked)
@@ -67,6 +68,8 @@ async function main(): Promise<number> {
     const apply = frame.getByRole("button", { name: "Apply accepted" });
     const rejectAll = frame.getByRole("button", { name: "Reject all" });
     check("Apply is disabled with nothing accepted", await apply.isDisabled(), "disabled");
+    const acceptAllApply = frame.getByRole("button", { name: "Accept all and apply" });
+    check("Accept all and apply is enabled while hunks are undecided", await acceptAllApply.isEnabled(), "enabled");
     await screens.shot(page, "panel-review-card-0");
 
     // 4. accept two hunks with the real CodeLens
@@ -102,6 +105,17 @@ async function main(): Promise<number> {
     await rejected.waitFor({ state: "visible", timeout: 30_000 });
     check("Reject all", true, `"${((await rejected.textContent()) ?? "").trim()}"`);
     await screens.shot(page, "panel-review-rejected");
+
+    // 7. accept all and apply from the panel (one click)
+    const before7 = (await readWorkspaceFile(env, "src/flask/helpers.py")).split("forge fake proposal").length - 1;
+    await runCommand(page, "Forge: Fake Proposal");
+    await acceptAllApply.waitFor({ state: "visible", timeout: 30_000 });
+    await acceptAllApply.click();
+    const allDone = frame.locator(".review-outcome.ok", { hasText: "Applied 3 of 3 hunks." }).first();
+    await allDone.waitFor({ state: "visible", timeout: 30_000 });
+    const after7 = (await readWorkspaceFile(env, "src/flask/helpers.py")).split("forge fake proposal").length - 1;
+    check("Accept all and apply", after7 - before7 === 3, `"${((await allDone.textContent()) ?? "").trim()}"; ${after7 - before7} new edits on disk`);
+    await screens.shot(page, "panel-accept-all-and-apply");
   } catch (err) {
     if (!steps.some((s) => !s.ok)) steps.push({ step: "UI flow", ok: false, detail: describeError(err) });
     if (launched) await screens.shot(launched.page, "panel-failure").catch(() => undefined);

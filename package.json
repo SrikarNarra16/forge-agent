@@ -207,7 +207,17 @@
         "forge.commandPrefix": {
           "type": "string",
           "default": "",
-          "description": "Shell prefix run before every command the agent runs, e.g. 'source .venv/bin/activate &&' so pytest finds your virtual environment. Leave empty to auto-detect: if the workspace has .venv/bin/activate (else venv/bin/activate) Forge uses 'source <that>/bin/activate &&'. A value set here always wins; use 'true &&' to run commands with no activation. The effective prefix is shown in the panel's Context section. Windows-style environments (Scripts\\activate) are not auto-detected: commands run through a POSIX shell, so set this yourself."
+          "description": "Shell prefix run before every command the agent runs, e.g. '. .venv/bin/activate &&' so pytest finds your virtual environment. Leave empty to auto-detect: if the workspace has .venv/bin/activate (else venv/bin/activate) Forge uses '. <that>/bin/activate &&'. A value set here always wins; use 'true &&' to run commands with no activation. The effective prefix is shown in the panel's Context section. Windows-style environments (Scripts\\activate) are not auto-detected: commands run through a POSIX shell, so set this yourself."
+        },
+        "forge.autoAllowCommands.readOnly": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Tier 1. Run these agent commands WITHOUT asking: `git status|diff|log|show|ls-files`, `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep` (no `-r`), `rg`, on workspace paths. They change nothing and run no project code. The whole command must match a strict pattern: no `;`, `&&`, `|`, redirects, `$( )`, backticks, newlines, unknown options, paths outside the workspace, or secrets (`.env*`, `.git`, keys); anything else still shows the Allow card. Auto-allowed commands are marked `auto-allowed (tier 1)` in the panel and logged. Known limit: a symlink inside the workspace that points outside it is not detected."
+        },
+        "forge.autoAllowCommands.tests": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Tier 2. Run `pytest` / `python -m pytest`, `ruff check` (never with `--fix`) and `mypy` WITHOUT asking, with the same strict whole-command matching as tier 1 (so `pytest ... 2>&1 | tail` still asks). **Risk: these execute workspace code.** pytest imports and runs your tests and `conftest.py`, including tests the agent just wrote, and mypy loads plugins named in its config; that is the same risk as running them yourself, but it happens without a prompt. Auto-allowed commands are marked `auto-allowed (tier 2)` in the panel and logged."
         },
         "forge.rollbackOnCancel": {
           "type": "boolean",

@@ -118,3 +118,40 @@ Scenario 6 failed twice in that pass. The first failure was a bug in the test (i
 | PASS | Reject all | "Rejected: nothing was written." |
 | PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
 
+## 2026-11-04 11:23 (hermetic run, pid 38407)
+
+| # | Result | Kind | Time | Scenario | Detail |
+|---|---|---|---|---|---|
+| 0 | PASS | hermetic | 0.0 s | Normal activation (no FORGE_E2E) registers no forge.e2e.* command | 24 forge.* commands, none of them forge.e2e.* |
+| 10 | PASS | hermetic | 0.3 s | Forge panel view resolves and posts its init state; CodeLens provider returns Accept/Reject lenses | panel resolved (ready x1); 9 lenses: Accept all, Reject all, Apply (0 of 3 accepted) ▸, ✓ Accept hunk, ✗ Reject hunk |
+| 3 | PASS | hermetic | 0.4 s | After an apply, ONE real `undo` restores the pre-apply text (single undo step) | one undo restored the exact pre-apply text (3 hunks applied as one undo step) |
+| 4 | PASS | hermetic | 0.3 s | Undo run restores the files (Fake Proposal) | git status clean after Undo run |
+| 11 | PASS | hermetic | 3.2 s | Reject hunk 1, accept the rest, apply: 10 times in a row with the file not open in any editor (no model) | 10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged 0 closed-document retries (0 where the edit had already landed and only needed saving); 31 Forge log lines read |
+| 12 | PASS | hermetic | 0.5 s | Panel buttons: 'Apply accepted' with 2 of 3 hunks (1 undecided) writes 2, one undo restores; 'Reject all' writes nothing | Apply accepted: "2 of 3 hunks accepted, 1 undecided", 2 hunks on disk (hunk 1 absent), a double click applied once, ONE undo restored the exact text; Reject all: state rejected, git clean, a stale Apply click ignored |
+| 13 | PASS | hermetic | 0.8 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
+| 1 | SKIP | live | 0.0 s | Task A inline edit, accept all -> verify-task-a PASS | needs E2E_LIVE=1 (real model) |
+| 2 | SKIP | live | 0.0 s | Task A partial accept (reject the code hunk) -> only the docstring changed | needs E2E_LIVE=1 (real model) |
+| 5 | SKIP | live | 0.0 s | Task B via the panel, accept all -> verify-task-b PASS | needs E2E_LIVE=1 (real model) |
+| 6 | SKIP | live | 0.0 s | Task B with one rejected hunk -> the agent is told and the result is reported | needs E2E_LIVE=1 (real model) |
+| 7 | SKIP | live | 0.0 s | Stop mid-run -> state cancelled, workspace pristine (git status clean) | needs E2E_LIVE=1 (real model) |
+| 8 | SKIP | live | 0.0 s | Task C: chain [broken-endpoint/broken, deepseek/flash] -> fallback notice, pristine before the first apply, Task A PASS | needs E2E_LIVE=1 (real model) |
+| 9 | SKIP | live | 0.0 s | Task C: chain [broken-endpoint/broken] only -> clear error, pristine workspace | needs E2E_LIVE=1 (real model) |
+
+## 2026-11-04 11:23 (UI layer, panel controls smoke, hermetic, Playwright)
+
+| Result | Step | Detail |
+|---|---|---|
+| PASS | command prefix shown | "Commands run with: . .venv/bin/activate &&" |
+| PASS | Open in TrueForge button | title: No run yet: opens the TrueForge Sessions list |
+| PASS | initial status line | "0 of 3 hunks accepted, 3 undecided" |
+| PASS | Apply is disabled with nothing accepted | disabled |
+| PASS | Accept all and apply is enabled while hunks are undecided | enabled |
+| PASS | undecided note | "Undecided hunks count as rejected: they will not be applied." |
+| PASS | Apply is enabled | enabled |
+| PASS | success line | "Applied 1 of 3 hunks; 2 not applied (rejected or undecided)." |
+| PASS | edits on disk | hunks written: 1 (the two undecided hunks were not written) |
+| PASS | no buttons left on a finished review | the card shows only its result line |
+| PASS | Reject all | "Rejected: nothing was written." |
+| PASS | Accept all and apply | "Applied 3 of 3 hunks."; 3 new edits on disk |
+| PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
+
