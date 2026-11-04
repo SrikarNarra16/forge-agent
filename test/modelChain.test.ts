@@ -128,6 +128,9 @@ describe("messages", () => {
     );
     expect(retryingMessage("deepseek/flash", 1500, { class: "transient", message: REAL[1]![1] })).toBe("Retrying deepseek/flash in 1.5 s (503: high demand)");
   });
+  it("switch notice shows milliseconds under one second", () => {
+    expect(switchedMessage(rec("a/x", "unreachable", "[Model Error] Cannot connect to API: connect ECONNREFUSED"), "b/y", 39)).toBe("a/x unreachable (connection refused) -> switched to b/y (after 39 ms)");
+  });
   it("exhausted message names each model with its class and gives the hint", () => {
     const text = exhaustedMessage([rec("a/x", "unreachable", REAL[11]![1]), rec("b/y", "transient", REAL[0]![1]), rec("b/y", "transient", REAL[0]![1])], ["a/x", "b/y", "c/z"]);
     expect(text).toContain("a/x (unreachable: connection refused)");

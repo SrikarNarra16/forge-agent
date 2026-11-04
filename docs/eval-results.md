@@ -86,3 +86,41 @@ Honest limits: 5 trials on one model/task; a cut during the exact milliseconds o
 | 2026-11-03-1921-r2 | 2026-11-03 | B | deepseek/flash | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 677967/10725 | 79s; 29 model calls; repo_map×1 get_symbols×1 read_file×13 search_code×9 run_command×8 propose_edit×4 list_tools×1 get_tool_info×1 call_tool×2 get_diagnostics×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
 | 2026-11-03-1921-r3 | 2026-11-03 | B | deepseek/flash | FAIL | a✓ b✓ c✓ d✓ e✓ f✗ g✓ | 519702/10423 | 70s; 25 model calls; repo_map×1 search_code×6 read_file×14 run_command×9 propose_edit×4 list_tools×1 get_tool_info×1 call_tool×3 get_diagnostics×2; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no; FAIL f: docs/cli.rst gained no section/entry for `flask config` |
 | 2026-11-03-1921-r4 | 2026-11-03 | B | deepseek/flash | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 405944/6748 | 50s; 20 model calls; get_symbols×1 search_code×3 read_file×13 propose_edit×6 run_command×5 list_tools×2 get_tool_info×1 call_tool×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-3036-r1 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ d✓ | 5892/520 | 5s; 2 model calls; propose_edit×1; chain broken-endpoint/broken > deepseek/flash; fallback after 0.0 s |
+| 2026-11-04-3036-r2 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ d✓ | 5901/537 | 4s; 2 model calls; propose_edit×1; chain broken-endpoint/broken > deepseek/flash; fallback after 0.0 s |
+| 2026-11-04-3036-r3 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ d✓ | 9356/703 | 5s; 3 model calls; read_file×1 propose_edit×1; chain broken-endpoint/broken > deepseek/flash; fallback after 0.0 s |
+| 2026-11-04-3423-r1 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ | n/a | 1s; 1 model calls; no tools; chain broken-endpoint/broken; error: No model could answer. broken-endpoint/broken (unreachable: connection refused). |
+| 2026-11-04-3423-r2 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ | n/a | 1s; 1 model calls; no tools; chain broken-endpoint/broken; error: No model could answer. broken-endpoint/broken (unreachable: connection refused). |
+| 2026-11-04-3423-r3 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ | n/a | 1s; 1 model calls; no tools; chain broken-endpoint/broken; error: No model could answer. broken-endpoint/broken (unreachable: connection refused). |
+| 2026-11-04-3650-r1 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ d✓ | 5793/423 | 4s; 2 model calls; propose_edit×1; chain badkey-deepseek/flash > deepseek/flash; fallback after 0.2 s |
+| 2026-11-04-3650-r2 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ d✓ | 5982/603 | 5s; 2 model calls; propose_edit×1; chain badkey-deepseek/flash > deepseek/flash; fallback after 0.2 s |
+| 2026-11-04-3650-r3 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ c✓ d✓ | 5745/373 | 4s; 2 model calls; propose_edit×1; chain badkey-deepseek/flash > deepseek/flash; fallback after 0.2 s |
+| 2026-11-04-3955-r1 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ | 5897/515 | 4s; 2 model calls; propose_edit×1 |
+| 2026-11-04-3955-r2 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ | 5768/392 | 3s; 2 model calls; propose_edit×1 |
+| 2026-11-04-3955-r3 | 2026-11-04 | A | deepseek/flash | PASS | a✓ b✓ | 5972/597 | 5s; 2 model calls; propose_edit×1 |
+| 2026-11-04-4186-r1 | 2026-11-04 | A | deepseek/v4-pro | PASS | a✓ b✓ | 6375/874 | 10s; 2 model calls; propose_edit×1 |
+| 2026-11-04-4186-r2 | 2026-11-04 | A | deepseek/v4-pro | PASS | a✓ b✓ | 6393/888 | 9s; 2 model calls; propose_edit×1 |
+| 2026-11-04-4186-r3 | 2026-11-04 | A | deepseek/v4-pro | PASS | a✓ b✓ | 6220/721 | 8s; 2 model calls; propose_edit×1 |
+
+## Task C live scenarios (4 Nov 2026): automatic model fallback, Task A, deepseek/flash as the real model
+Cost-guard limit raised to 4.6M tokens for these runs only (`--token-limit 4600000`); no Task B or tuning runs. TrueForge had stopped overnight and was restarted with `npm run tf:start` (the documented fast-failure settings); models, demo providers and agents had persisted.
+
+| Scenario (chain) | Runs | Result | Time to fallback | Workspace |
+|---|---|---|---|---|
+| `broken-endpoint/broken -> deepseek/flash` (`--fail-primary`) | 3 | 3/3 PASS: switched automatically, Task A scorer passed, only `helpers.py` changed | 39, 13, 11 ms (unreachable endpoint refuses at once, no retries) | clean at the moment of the switch (checked before the fallback applied anything) |
+| `broken-endpoint/broken` only | 3 | 3/3 PASS: ended `error` with "No model could answer. broken-endpoint/broken (unreachable: connection refused). Check Settings -> Models in TrueForge ... forge.models", chain event `exhausted` | n/a | pristine (`git status` empty) |
+| `badkey-deepseek/flash -> deepseek/flash` (invalid key on the real DeepSeek URL) | 3 | 3/3 PASS: classified as authentication failure (`401: authentication fails, your api key`), switched with no retries, Task A passed | 187, 218, 246 ms | clean at the switch |
+
+TrueForge resources identical before/after every invocation. Notes: the unreachable endpoint refuses connections instantly, so the 3 s connect timeout of `tf:start` is not exercised by it (it bounds hosts that do not answer at all, which this demo cannot produce); real provider 503 retries/backoff are covered by unit tests with the real error strings, not by a live outage.
+
+### Stall-timing measurement (Task A only; arrival time recorded per stream event)
+`npx tsx scripts/eval/timing.ts` over the successful turns of today's runs (Task A: a short prompt, 2-3 model calls per run, tool results in between):
+
+| Model | Successful turns | Time to first token (median / p95 / max) | Longest silence between progress events, no tool in flight (max) |
+|---|---|---|---|
+| deepseek/flash | 18 | 679 ms / 1459 ms / 1459 ms | 1459 ms |
+| deepseek/v4-pro | 6 | 884 ms / 1254 ms / 1254 ms | 1240 ms |
+
+Reading: for these small prompts both models answer within ~1.5 s and never go silent for more than ~1.5 s, a >30x margin below the 45 s / 90 s defaults. This does NOT validate the defaults for Task B (hundreds of thousands of input tokens per run, long reasoning): that needs the same measurement on Task B runs, which were excluded here. The only silences observed so far that would matter were provider stalls of ~300 s. Defaults unchanged (45 / 90); no data argues for a change.
+
+Cost-guard ledger after these runs: 4,256,514 tokens (4,173,124 in / 83,390 out) over 25 counted attempts (limit for this batch 4.6M; the standing limit is 4.0M).

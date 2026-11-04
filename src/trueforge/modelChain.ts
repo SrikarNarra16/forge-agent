@@ -115,7 +115,7 @@ export function planNext(history: readonly AttemptRecord[], models: readonly str
 
 /** "deepseek/flash unreachable (connection refused) -> switched to deepseek/v4-pro (after 2.1 s)" */
 export function switchedMessage(from: AttemptRecord, to: string, afterMs: number): string {
-  return `${from.model} ${describeClass(from.failure.class)} (${shortReason(from.failure.message)}) -> switched to ${to} (after ${(afterMs / 1000).toFixed(1)} s)`;
+  return `${from.model} ${describeClass(from.failure.class)} (${shortReason(from.failure.message)}) -> switched to ${to} (after ${afterMs < 1000 ? `${Math.round(afterMs)} ms` : `${(afterMs / 1000).toFixed(1)} s`})`;
 }
 
 /** "Retrying deepseek/flash in 1.5 s (503: high demand)" */

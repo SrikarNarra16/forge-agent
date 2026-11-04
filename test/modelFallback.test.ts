@@ -70,7 +70,7 @@ describe("automatic fallback", () => {
     expect(ui.users).toEqual(["fix it"]); // one user entry, no duplicate
     expect(ui.discards).toBe(1); // the failed attempt's partial output is dropped from the UI
     const sw = ui.chainEvents.find((e) => e.kind === "switched");
-    expect(sw?.text).toMatch(/^m1 unreachable \(connection refused\) -> switched to m2 \(after \d+\.\d s\)\.$/);
+    expect(sw?.text).toMatch(/^m1 unreachable \(connection refused\) -> switched to m2 \(after \d+(?:\.\d s| ms)\)\.$/);
     expect(typeof sw?.afterMs).toBe("number");
   });
 
