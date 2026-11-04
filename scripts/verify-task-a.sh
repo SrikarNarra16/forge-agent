@@ -7,7 +7,11 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURE="${FIXTURE_DIR:-$HERE/../../fixtures/flask}"
-PY="$FIXTURE/.venv/bin/python"
+# PYTHON overrides the interpreter (a temp copy has no .venv of its own); PYTHONPATH makes `import flask` resolve to
+# the checked directory's src/ (harmless for the real fixture, whose editable install points at the same place).
+PY="${PYTHON:-$FIXTURE/.venv/bin/python}"
+export PYTHONPATH="$FIXTURE/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONDONTWRITEBYTECODE=1
 
 if [ ! -x "$PY" ]; then
   echo "FAIL: $PY not found. Create the fixture's virtualenv first (see docs/PROGRESS.md, P00)." >&2

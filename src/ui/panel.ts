@@ -62,6 +62,8 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
   private readonly pending = new Map<string, PendingApproval>();
   private readonly testCards = new Set<string>();
   private testCardCounter = 0;
+  /** How many times the webview announced itself (`ready`) and received its init state. */
+  private readyCount = 0;
 
   private readonly unsubscribeTracker: () => void;
 
@@ -239,6 +241,10 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
     return this.view !== undefined;
   }
 
+  get readyMessages(): number {
+    return this.readyCount;
+  }
+
   private onMessage(raw: unknown): void {
     const message = parseWebMessage(raw);
     if (!message) {
@@ -247,6 +253,7 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
     }
     switch (message.type) {
       case "ready":
+        this.readyCount++;
         this.post({ type: "init", items: [...this.transcript.items], status: this.status });
         this.post({ type: "review", entries: this.tracker.list().map(toQueueEntry) });
         this.postContext();

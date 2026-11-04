@@ -7,3 +7,4 @@ trueforge/models.local.json
 .vscode-test
 coverage
 eval-output
+e2e-output

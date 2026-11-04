@@ -69,6 +69,8 @@ export interface E2eDeps {
 export type DecidePolicy =
   | { review: "acceptAll" | "rejectAll"; commands?: "allow" | "deny" }
   | { review: "rejectHunkMatching"; pattern: string; commands?: "allow" | "deny" }
+  /** Reject hunk `index` of the FIRST review only; every other hunk and review is accepted. */
+  | { review: "rejectIndexOfFirst"; index: number; commands?: "allow" | "deny" }
   | { review: "none"; commands?: "allow" | "deny" };
 
 function policyFrom(raw: unknown): DecidePolicy | undefined {
@@ -76,6 +78,8 @@ function policyFrom(raw: unknown): DecidePolicy | undefined {
   if (typeof raw === "string") {
     if (raw === "acceptAll" || raw === "rejectAll") return { review: raw, commands: "allow" };
     if (raw === "allowCommands") return { review: "none", commands: "allow" };
+    const index = /^rejectIndexOfFirst:(\d+)$/.exec(raw);
+    if (index) return { review: "rejectIndexOfFirst", index: Number(index[1]), commands: "allow" };
     if (raw.startsWith("rejectHunk:")) return { review: "rejectHunkMatching", pattern: raw.slice("rejectHunk:".length), commands: "allow" };
   }
   if (typeof raw === "object" && raw !== null) return raw as DecidePolicy;
@@ -100,6 +104,12 @@ export function registerE2eHooks(deps: E2eDeps): vscode.Disposable[] {
         await vscode.commands.executeCommand("forge.reviewRejectAll", entry.callId);
       } else if (policy.review === "acceptAll") {
         await vscode.commands.executeCommand("forge.reviewAcceptAll", entry.callId);
+        await vscode.commands.executeCommand("forge.reviewApply", entry.callId);
+      } else if (policy.review === "rejectIndexOfFirst" && peek) {
+        const first = handledReviews.size === 1; // this is the first review the autopilot sees
+        for (const hunk of peek.hunks) {
+          await vscode.commands.executeCommand(first && hunk.id === policy.index ? "forge.reviewRejectHunk" : "forge.reviewAcceptHunk", entry.callId, hunk.id);
+        }
         await vscode.commands.executeCommand("forge.reviewApply", entry.callId);
       } else if (policy.review === "rejectHunkMatching" && peek) {
         const pattern = new RegExp(policy.pattern);
@@ -146,6 +156,7 @@ export function registerE2eHooks(deps: E2eDeps): vscode.Disposable[] {
       discards: recorder.discards,
       usage: recorder.usage(),
       panelViewResolved: panel.hasView,
+      readyCount: panel.readyMessages,
       resourcePrefix: deps.names.prefix,
       names: deps.names,
     };
@@ -172,6 +183,8 @@ export function registerE2eHooks(deps: E2eDeps): vscode.Disposable[] {
     vscode.commands.registerCommand("forge.e2e.state", state),
     vscode.commands.registerCommand("forge.e2e.decide", (args?: { policy?: unknown }) => {
       policy = policyFrom(args?.policy);
+      handledReviews.clear();
+      handledCommands.clear();
       if (timer) clearInterval(timer);
       timer = undefined;
       if (policy) {
