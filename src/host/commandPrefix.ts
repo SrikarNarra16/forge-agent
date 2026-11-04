@@ -3,8 +3,11 @@ import type { WorkspaceHost } from "../mcp/host";
 /**
  * The shell prefix run before every agent command (forge.commandPrefix). An explicit setting always wins. When it is
  * empty and the workspace has a Python virtual environment (`.venv/bin/activate`, else `venv/bin/activate`), the prefix
- * defaults to `source <dir>/bin/activate &&`, so `pytest` finds the project's packages. The effective prefix and where
+ * defaults to `. <dir>/bin/activate &&`, so `pytest` finds the project's packages. The effective prefix and where
  * it came from are shown in the panel's Context section, so it is never hidden.
+ *
+ * It uses the POSIX `.` (dot) command, not `source`, because commands run through `$SHELL -c` and fall back to `/bin/sh`,
+ * which is dash on Debian/Ubuntu and has no `source`. `.` works in dash, bash and zsh.
  *
  * POSIX only, like run_command itself (it runs `$SHELL -c`): a Windows-style environment (`Scripts\activate` only) is
  * NOT detected and no prefix is invented for it; set forge.commandPrefix yourself there. To keep an existing venv from
@@ -20,13 +23,13 @@ export interface EffectivePrefix {
 /** Candidate directories in priority order. `.venv` is the uv/poetry/IDE default, `venv` the older convention. */
 export const VENV_DIRS = [".venv", "venv"] as const;
 
-/** `source .venv/bin/activate &&` if the workspace has such an environment, else undefined. Never throws. */
+/** `. .venv/bin/activate &&` if the workspace has such an environment, else undefined. Never throws. */
 export async function detectVenvPrefix(host: Pick<WorkspaceHost, "readText">): Promise<string | undefined> {
   for (const dir of VENV_DIRS) {
     try {
       // readText reads files regardless of the ignore rules that hide .venv from listings; any error = not there
       await host.readText(`${dir}/bin/activate`);
-      return `source ${dir}/bin/activate &&`;
+      return `. ${dir}/bin/activate &&`;
     } catch {
       /* try the next candidate */
     }

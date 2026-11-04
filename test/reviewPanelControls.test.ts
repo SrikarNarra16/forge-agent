@@ -46,10 +46,11 @@ describe("webview messages for the new buttons", () => {
   it("accepts reviewApply / reviewRejectAll with a call id and openTrueForge without payload", () => {
     expect(parseWebMessage({ type: "reviewApply", callId: "c1" })).toEqual({ type: "reviewApply", callId: "c1" });
     expect(parseWebMessage({ type: "reviewRejectAll", callId: "c1" })).toEqual({ type: "reviewRejectAll", callId: "c1" });
+    expect(parseWebMessage({ type: "reviewAcceptAllApply", callId: "c1" })).toEqual({ type: "reviewAcceptAllApply", callId: "c1" });
     expect(parseWebMessage({ type: "openTrueForge" })).toEqual({ type: "openTrueForge" });
   });
   it("rejects malformed ones", () => {
-    for (const bad of [{ type: "reviewApply" }, { type: "reviewApply", callId: "" }, { type: "reviewRejectAll", callId: 7 }, { type: "reviewApply", callId: "x".repeat(301) }]) {
+    for (const bad of [{ type: "reviewApply" }, { type: "reviewApply", callId: "" }, { type: "reviewRejectAll", callId: 7 }, { type: "reviewAcceptAllApply" }, { type: "reviewApply", callId: "x".repeat(301) }]) {
       expect(parseWebMessage(bad)).toBeUndefined();
     }
   });
@@ -68,14 +69,14 @@ describe("the effective command prefix in the Context section", () => {
   it("is shown whatever its source, and survives a chat reset", () => {
     const state = new ContextPanelState();
     expect(hasContext(state.snapshot())).toBe(false);
-    state.setRun({ prefix: "source .venv/bin/activate &&", source: "auto" });
+    state.setRun({ prefix: ". .venv/bin/activate &&", source: "auto" });
     expect(hasContext(state.snapshot())).toBe(true);
     expect(contextSummary(state.snapshot())).toBe("venv auto-activated");
     state.clear();
-    expect(state.snapshot().run).toEqual({ prefix: "source .venv/bin/activate &&", source: "auto" });
+    expect(state.snapshot().run).toEqual({ prefix: ". .venv/bin/activate &&", source: "auto" });
   });
   it("labels each source", () => {
-    expect(runPrefixLabel({ prefix: "source .venv/bin/activate &&", source: "auto" })).toMatchObject({ text: "Commands run with: source .venv/bin/activate &&", hint: expect.stringContaining("auto-detected") });
+    expect(runPrefixLabel({ prefix: ". .venv/bin/activate &&", source: "auto" })).toMatchObject({ text: "Commands run with: . .venv/bin/activate &&", hint: expect.stringContaining("auto-detected") });
     expect(runPrefixLabel({ prefix: "make env &&", source: "setting" }).hint).toContain("forge.commandPrefix");
     expect(runPrefixLabel({ prefix: "", source: "none" }).text).toBe("Commands run without a prefix");
     expect(contextSummary({ reads: [], expand: false, run: { prefix: "x &&", source: "setting" } })).toBe("custom command prefix");

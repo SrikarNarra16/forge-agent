@@ -12,7 +12,7 @@ const KILL_GRACE_MS = 2000;
 const SETTLE_AFTER_KILL_MS = 3000;
 
 export interface NodeRunnerOptions {
-  /** `source .venv/bin/activate &&`-style prefix (forge.commandPrefix); read per run so setting changes apply. */
+  /** `. .venv/bin/activate &&`-style prefix (forge.commandPrefix); read per run so setting changes apply. */
   getPrefix?: () => string;
   env?: NodeJS.ProcessEnv;
   shell?: string;

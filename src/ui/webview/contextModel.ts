@@ -49,7 +49,7 @@ export function contextSummary(state: ContextViewState): string {
 /** The panel always has something to show once the command prefix is known (it is never hidden). */
 export const hasContext = (state: ContextViewState): boolean => state.plan !== undefined || state.reads.length > 0 || state.run !== undefined;
 
-/** "Commands run with `source .venv/bin/activate &&` (auto-detected virtual environment)". */
+/** "Commands run with `. .venv/bin/activate &&` (auto-detected virtual environment)". */
 export function runPrefixLabel(run: ContextViewRun): { text: string; hint: string } {
   switch (run.source) {
     case "setting":
