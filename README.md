@@ -41,8 +41,12 @@ A fallback only happens if the failed attempt had **no side effects** (no edit a
 
 Headless check: `npm run eval -- --task a --fail-primary --runs 3` (and `--chain broken-endpoint/broken`).
 
+## Running two windows side by side
+
+The TrueForge resources Forge registers (`forge-editor`, `forge-editor-extras`, `forge-agent`, `forge-inline`) can be given a prefix with the `forge.resourcePrefix` setting (or the `FORGE_RESOURCE_PREFIX` environment variable, which wins), e.g. `win2-` registers `win2-forge-editor`, `win2-forge-agent` and so on. Two VS Code windows with different prefixes can run against one TrueForge without touching each other's resources; reload the window after changing it. The committed `agents/*.json` keep the default names (the prefix is applied when they are loaded). The end-to-end tests use `e2e-<pid>-` (docs/e2e.md).
+
 ## Development
 
-`npm run build | typecheck | lint | test | package`
+`npm run build | typecheck | lint | test | package`; end-to-end tests in a real VS Code: `npm run test:e2e`, `npm run test:ui`, `npm run e2e:rehearsal` (docs/e2e.md).
 
 Licence: MIT.

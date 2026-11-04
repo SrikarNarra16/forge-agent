@@ -38,17 +38,16 @@ async function selectGetDebugFlag(page: Launched["page"], env: E2eEnvironment): 
   const def = lines.findIndex((l) => l.startsWith("def get_debug_flag"));
   let end = def;
   while (end + 1 < lines.length && lines[end + 1] !== "" && /^\s/.test(lines[end + 1] ?? "")) end++;
+  // Quick Open understands `file:line`, so one step opens the file with the cursor on the `def` line
   await page.keyboard.press(`${MOD}+P`);
   const input = page.locator(".quick-input-widget input.input");
   await input.waitFor({ state: "visible" });
-  await input.fill("src/flask/helpers.py");
+  await input.fill(`src/flask/helpers.py:${def + 1}`);
   await page.locator(".quick-input-list .monaco-list-row", { hasText: "helpers.py" }).first().waitFor({ state: "visible" });
   await page.keyboard.press("Enter");
+  await page.locator(".quick-input-widget").waitFor({ state: "hidden" });
   await page.locator(".tab.active", { hasText: "helpers.py" }).waitFor({ state: "visible" });
-  await page.keyboard.press("Control+G");
-  await input.waitFor({ state: "visible" });
-  await input.fill(String(def + 1));
-  await page.keyboard.press("Enter");
+  await page.locator(".monaco-editor .current-line").first().waitFor({ state: "visible" });
   await page.keyboard.press("Home");
   for (let i = 0; i < end - def; i++) await page.keyboard.press("Shift+ArrowDown");
   await page.keyboard.press("Shift+End");

@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { _electron as electron, type ElectronApplication, type Frame, type Page } from "playwright-core";
@@ -21,6 +23,7 @@ export interface Screens {
 export async function makeScreens(): Promise<Screens> {
   const dir = join(ROOT, "e2e-output", "screens");
   await mkdir(dir, { recursive: true });
+  for (const f of readdirSync(dir)) if (f.endsWith(".png")) unlinkSync(join(dir, f)); // only this run's screenshots in the folder
   let n = 0;
   return {
     dir,
@@ -37,7 +40,15 @@ export interface Launched {
   page: Page;
 }
 
+/** Playwright records video with its own ffmpeg build; without it launching with recordVideo hangs VS Code's window. */
+export function assertFfmpeg(): void {
+  const cache = process.env["PLAYWRIGHT_BROWSERS_PATH"] ?? join(homedir(), process.platform === "darwin" ? "Library/Caches/ms-playwright" : ".cache/ms-playwright");
+  const found = existsSync(cache) && readdirSync(cache).some((d) => d.startsWith("ffmpeg"));
+  if (!found) throw new Error("Playwright's ffmpeg is missing (needed for video). Run once: npx playwright-core install ffmpeg");
+}
+
 export async function launch(env: E2eEnvironment, options: { video: boolean }): Promise<Launched> {
+  if (options.video) assertFfmpeg();
   const videoDir = join(ROOT, "e2e-output", "video");
   await mkdir(videoDir, { recursive: true });
   const app = await electron.launch({
@@ -117,14 +128,14 @@ export async function drive(page: Page, frame: Frame, screens: Screens, options:
     const status = await statusText(frame);
     if (["Done", "Error", "Stopped"].includes(status) && (await frame.locator(".queue-row.state-reviewing").count()) === 0) return log;
 
-    const allow = frame.locator(".approval button.primary", { hasText: "Allow" }).first();
+    const allow = frame.locator(".approval button.primary:not([disabled])", { hasText: "Allow" }).first(); // a decided card keeps its (disabled) buttons
     if (await allow.isVisible().catch(() => false)) {
       if (!shotCommand) {
         shotCommand = true;
         await screens.shot(page, "command-approval-card");
       }
-      await allow.click();
-      log.commandsAllowed++;
+      // the card may have been decided by the time we click; count only clicks that happened
+      if (await allow.click({ timeout: 10_000 }).then(() => true, () => false)) log.commandsAllowed++;
       continue;
     }
 
@@ -137,7 +148,10 @@ export async function drive(page: Page, frame: Frame, screens: Screens, options:
         log.lensSeen = true;
         await screens.shot(page, "diff-with-codelens");
       }
-      await page.getByText("Accept all", { exact: true }).first().click();
+      // the "Accept all" lens sits on the first line of the proposal; the diff is revealed at the first hunk, so go to the top
+      await page.keyboard.press(`${MOD}+ArrowUp`);
+      const acceptAll = page.locator('a[role="button"]', { hasText: /^Accept all$/ }).locator("visible=true").first();
+      await acceptAll.click({ timeout: 15_000 });
       await page.keyboard.press(`${MOD}+Enter`); // forge.reviewApply
       log.reviewsApplied++;
       await until("the review to finish", async () => (await frame.locator(".queue-row.state-reviewing").count()) === 0 || (await statusText(frame)) !== "Waiting for your approval", 30_000, 200).catch(() => undefined);
