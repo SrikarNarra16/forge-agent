@@ -90,6 +90,11 @@ export function toolCardModel(item: ToolItem): ToolCardModel {
   return { headline: item.argsSummary, inlineArgs: hasArgs ? item.args : undefined, detailsArgs: undefined };
 }
 
+/** The short badge on a command card line: "auto-allowed (tier 1)". */
+export function autoAllowBadge(item: Pick<ToolItem, "autoAllowed">): string | undefined {
+  return item.autoAllowed ? `auto-allowed (tier ${item.autoAllowed})` : undefined;
+}
+
 export interface CommandCardModel {
   command: string;
   /** Show the "Allow this exact command for this run" checkbox (only while the approval is pending). */
@@ -104,7 +109,7 @@ export function commandCardModel(item: ToolItem): CommandCardModel | undefined {
   return {
     command: item.command,
     offerRunAllow: item.approval === "pending",
-    decided: item.approval === "allowed" ? "You allowed this command." : item.approval === "denied" ? "You denied this command." : undefined,
+    decided: item.autoAllowed ? `Auto-allowed (${item.autoAllowed === 1 ? "tier 1: read-only" : "tier 2: tests"}) by your forge.autoAllowCommands setting; you were not asked.` : item.approval === "allowed" ? "You allowed this command." : item.approval === "denied" ? "You denied this command." : undefined,
   };
 }
 

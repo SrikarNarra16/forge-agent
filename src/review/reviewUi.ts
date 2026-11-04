@@ -215,6 +215,8 @@ export class ReviewUi implements ReviewPresenter, vscode.Disposable {
       vscode.commands.registerCommand("forge.reviewRejectHunk", hunkCommand("reject")),
       vscode.commands.registerCommand("forge.reviewAcceptAll", wholeReview((s) => s.acceptAll())),
       vscode.commands.registerCommand("forge.reviewRejectAll", wholeReview((s) => s.rejectAll())),
+      // used by the panel's "Accept all and apply" (then forge.reviewApply): accepts only what is still undecided
+      vscode.commands.registerCommand("forge.reviewAcceptPending", wholeReview((s) => s.acceptPending())),
       vscode.commands.registerCommand("forge.reviewApply", wholeReview((s) => s.apply())),
       vscode.commands.registerCommand("forge.reviewPickHunk", async (callId?: unknown) => {
         const review = this.resolve(callId);

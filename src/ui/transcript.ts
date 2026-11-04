@@ -53,6 +53,8 @@ export class Transcript {
   private readonly gated = new Set<string>();
   /** Review info by tool call id, attached to the tool card (it may arrive before or after the card exists). */
   private readonly reviews = new Map<string, ReviewItemInfo>();
+  /** Commands allowed by forge.autoAllowCommands (tier 1 or 2) without asking; the card says so. */
+  private readonly autoAllowed = new Map<string, 1 | 2>();
   private noticeCounter = 0;
   private dividerCounter = 0;
   /** Compactions of the current reducer already shown as dividers. */
@@ -70,6 +72,7 @@ export class Transcript {
     this.positions.clear();
     this.gated.clear();
     this.reviews.clear();
+    this.autoAllowed.clear();
     this.compactionsShown = 0;
     this.attemptMark = 0;
   }
@@ -82,6 +85,15 @@ export class Transcript {
     if (!item || item.kind !== "tool") return undefined;
     const { review: _old, ...rest } = item;
     return this.upsert(review ? { ...rest, review } : rest);
+  }
+
+  /** Marks a run_command card as auto-allowed (it never showed Allow/Deny); the mark survives later updates of the card. */
+  setAutoAllowed(id: string, tier: 1 | 2): ChatItem | undefined {
+    this.autoAllowed.set(id, tier);
+    this.gated.add(id);
+    const item = this.find(id);
+    if (!item || item.kind !== "tool") return undefined;
+    return this.upsert({ ...item, autoAllowed: tier, approval: item.approval === "denied" ? "denied" : "allowed" });
   }
 
   addUser(text: string): ChatItem {
@@ -103,6 +115,7 @@ export class Transcript {
     for (const item of removed) {
       this.gated.delete(item.id);
       this.reviews.delete(item.id);
+      this.autoAllowed.delete(item.id);
     }
     this.compactionsShown = 0;
     return removed.map((i) => i.id);
@@ -181,6 +194,7 @@ export class Transcript {
   private toolItem(call: ToolCallInfo, subagent: string | undefined): ChatItem {
     if (call.status === "awaiting_approval") this.gated.add(call.id);
     const review = this.reviews.get(call.id);
+    const autoTier = this.autoAllowed.get(call.id);
     const approval: ApprovalState | undefined =
       call.status === "awaiting_approval" ? "pending" : call.status === "denied" ? "denied" : this.gated.has(call.id) ? "allowed" : undefined;
     return {
@@ -195,6 +209,7 @@ export class Transcript {
       ...(subagent ? { subagent, thread: call.threadId } : {}),
       ...(approval ? { approval } : {}),
       ...(review ? { review } : {}),
+      ...(autoTier ? { autoAllowed: autoTier } : {}),
       ...(call.name === "run_command" && commandOf(call.args) !== undefined ? { command: commandOf(call.args) as string } : {}),
     };
   }

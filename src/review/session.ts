@@ -89,6 +89,13 @@ export class ReviewSession {
     this.emit();
   }
 
+  /** Accepts every hunk that is still undecided; hunks the user rejected stay rejected. (Used by "Accept all and apply".) */
+  acceptPending(): void {
+    if (this.finished) return;
+    this.decisions = this.decisions.map((d) => (d === "pending" ? "accepted" : d));
+    this.emit();
+  }
+
   /** Rejects every hunk and finishes the review. */
   rejectAll(): void {
     if (this.finished) return;

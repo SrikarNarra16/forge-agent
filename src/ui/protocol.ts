@@ -67,6 +67,8 @@ export type ChatItem =
       approval?: ApprovalState;
       /** run_command: the exact command, shown in a code block on the approval card. */
       command?: string;
+      /** run_command allowed without asking by forge.autoAllowCommands: tier 1 (read-only) or 2 (tests). */
+      autoAllowed?: 1 | 2;
       /** Present for propose_edit / create_file: the card shows "Review diff" instead of Allow/Deny. */
       review?: ReviewItemInfo;
     }
@@ -110,6 +112,8 @@ export type WebToExt =
   /** Panel buttons of a pending review: the same as Cmd+Enter / the CodeLens (forge.reviewApply / forge.reviewRejectAll). */
   | { type: "reviewApply"; callId: string }
   | { type: "reviewRejectAll"; callId: string }
+  /** Accept every undecided hunk, then apply (forge.reviewAcceptPending + forge.reviewApply). */
+  | { type: "reviewAcceptAllApply"; callId: string }
   | { type: "openTrueForge" }
   | { type: "approval"; callId: string; decision: "allow" | "deny"; reason?: string; allowThisRun?: boolean };
 
@@ -149,7 +153,8 @@ export function parseWebMessage(data: unknown): WebToExt | undefined {
       return { type: data["type"] };
     case "openReview":
     case "reviewApply":
-    case "reviewRejectAll": {
+    case "reviewRejectAll":
+    case "reviewAcceptAllApply": {
       const callId = data["callId"];
       if (typeof callId !== "string" || callId === "" || callId.length > MAX_ID) return undefined;
       return { type: data["type"], callId };

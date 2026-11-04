@@ -132,3 +132,34 @@ describe("ReviewTracker", () => {
     expect(t.list().map((e) => e.callId)).toEqual(["c1", "c3"]);
   });
 });
+
+describe("ReviewSession.acceptPending (the panel's 'Accept all and apply')", () => {
+  const original = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"].map((l) => `${l}\n`).join("");
+  const proposed = original.replace("b\n", "B\n").replace("f\n", "F\n").replace("k\n", "K\n");
+  const make = (): ReviewSession => new ReviewSession({ callId: "c", path: "x.py", kind: "edit", summary: "s", original, proposed });
+
+  it("accepts every undecided hunk and leaves rejected ones rejected", () => {
+    const s = make();
+    expect(s.hunks).toHaveLength(3);
+    s.reject(0);
+    s.accept(1);
+    s.acceptPending();
+    expect(s.decisionList).toEqual(["rejected", "accepted", "accepted"]);
+    s.apply();
+    expect(s.finished).toBe(true);
+  });
+
+  it("applies the same way as accepting the rest by hand (one apply path)", async () => {
+    const s = make();
+    s.acceptPending();
+    s.apply();
+    expect(await s.done).toEqual({ kind: "apply", accepted: [0, 1, 2] });
+  });
+
+  it("does nothing on a finished review", () => {
+    const s = make();
+    s.rejectAll();
+    s.acceptPending();
+    expect(s.decisionList).toEqual(["rejected", "rejected", "rejected"]);
+  });
+});

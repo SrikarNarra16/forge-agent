@@ -1,5 +1,5 @@
 import type { ChatItem, ReviewItemInfo, ReviewQueueEntry } from "../protocol";
-import { commandCardModel, reviewHeader, reviewOutcomeLine, reviewStatusLine, reviewUndecidedNote, toolCardModel } from "./format";
+import { autoAllowBadge, commandCardModel, reviewDecisions, reviewHeader, reviewOutcomeLine, reviewStatusLine, reviewUndecidedNote, toolCardModel } from "./format";
 import { parseMarkdown, type Block, type Inline } from "./markdown";
 
 /**
@@ -12,6 +12,7 @@ export interface RenderHandlers {
   onOpenReview(callId: string): void;
   /** "Apply accepted" / "Reject all" in the review queue. */
   onReviewApply(callId: string): void;
+  onReviewAcceptAllApply(callId: string): void;
   onReviewRejectAll(callId: string): void;
 }
 
@@ -93,6 +94,8 @@ function renderTool(item: Extract<ChatItem, { kind: "tool" }>, handlers: RenderH
         : item.status === "running"
           ? "running"
           : "";
+  const badge = autoAllowBadge(item);
+  if (badge) summary.appendChild(el("span", "badge auto-allowed", badge));
   if (meta) summary.appendChild(el("span", "tool-meta", meta));
   details.appendChild(summary);
 
@@ -208,17 +211,26 @@ function renderReviewControls(entry: ReviewQueueEntry, handlers: RenderHandlers)
     box.appendChild(el("div", "review-status", entry.state === "applying" ? (line?.text ?? "") : reviewStatusLine(entry)));
     const note = entry.state === "reviewing" ? reviewUndecidedNote(entry) : "";
     if (note) box.appendChild(el("div", "review-note", note));
-    const apply = el("button", "primary", "Apply accepted");
+    const acceptAll = el("button", "primary", "Accept all and apply");
+    const apply = el("button", "secondary", "Apply accepted");
     const reject = el("button", "secondary", "Reject all");
     const accepted = entry.accepted ?? 0;
+    const undecided = reviewDecisions(entry).undecided;
+    acceptAll.disabled = entry.state === "applying" || undecided === 0;
+    acceptAll.title = entry.state === "applying" ? "Writing the change…" : undecided === 0 ? "Nothing is undecided: use Apply accepted" : "Accept every undecided hunk (rejected ones stay rejected) and write the result";
     apply.disabled = entry.state === "applying" || accepted === 0;
     reject.disabled = entry.state === "applying";
     apply.title = entry.state === "applying" ? "Writing the change…" : accepted === 0 ? "Accept at least one hunk in the diff first (or use Reject all)" : "Write the accepted hunks (same as Cmd/Ctrl+Enter in the diff)";
     reject.title = "Reject the whole change; nothing is written";
     const lock = (): void => {
+      acceptAll.disabled = true;
       apply.disabled = true;
       reject.disabled = true;
     };
+    acceptAll.addEventListener("click", () => {
+      lock();
+      handlers.onReviewAcceptAllApply(entry.callId);
+    });
     apply.addEventListener("click", () => {
       lock();
       handlers.onReviewApply(entry.callId);
@@ -228,7 +240,7 @@ function renderReviewControls(entry: ReviewQueueEntry, handlers: RenderHandlers)
       handlers.onReviewRejectAll(entry.callId);
     });
     const buttons = el("div", "review-buttons");
-    buttons.append(apply, reject);
+    buttons.append(acceptAll, apply, reject);
     box.appendChild(buttons);
     return box;
   }

@@ -35,6 +35,8 @@ export interface PanelHandlers {
   undoRun(): void;
   /** The panel's "Apply accepted" button: runs forge.reviewApply, the command Cmd+Enter and the CodeLens use. */
   applyReview(callId: string): void;
+  /** The panel's "Accept all and apply" button: accepts the undecided hunks, then the same apply as above. */
+  acceptAllAndApply(callId: string): void;
   /** The panel's "Reject all" button: runs forge.reviewRejectAll. */
   rejectReview(callId: string): void;
   /** "Open in TrueForge": the current session's page, else the Sessions list. */
@@ -120,6 +122,12 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
 
   setHandlers(handlers: PanelHandlers): void {
     this.handlers = handlers;
+  }
+
+  /** A run_command was allowed by forge.autoAllowCommands: mark its card ("auto-allowed (tier N)") so nothing is hidden. */
+  noteAutoAllowed(callId: string, tier: 1 | 2): void {
+    const item = this.transcript.setAutoAllowed(callId, tier);
+    if (item) this.batcher.push(item);
   }
 
   /** Called when VS Code resolves (or re-resolves) the webview view. The webview asks for the transcript with `ready`. */
@@ -295,12 +303,14 @@ export class PanelUi implements UiSink, ApprovalHandler, vscode.Disposable {
         break;
       case "reviewApply":
       case "reviewRejectAll":
+      case "reviewAcceptAllApply":
         // Only a review that is waiting for its decision can be applied or rejected: a second click (or a stale one) does nothing.
         if (this.tracker.get(message.callId)?.state !== "reviewing") {
           this.log.info(`${message.type} for ${message.callId} ignored: it is not waiting for a decision`);
           break;
         }
         if (message.type === "reviewApply") this.handlers?.applyReview(message.callId);
+        else if (message.type === "reviewAcceptAllApply") this.handlers?.acceptAllAndApply(message.callId);
         else this.handlers?.rejectReview(message.callId);
         break;
       case "openTrueForge":

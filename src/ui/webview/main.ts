@@ -100,6 +100,7 @@ function mount(): void {
     onApproval: (callId, decision, reason, allowThisRun) => post({ type: "approval", callId, decision, ...(reason ? { reason } : {}), ...(allowThisRun ? { allowThisRun } : {}) }),
     onOpenReview: (callId) => post({ type: "openReview", callId }),
     onReviewApply: (callId) => post({ type: "reviewApply", callId }),
+    onReviewAcceptAllApply: (callId) => post({ type: "reviewAcceptAllApply", callId }),
     onReviewRejectAll: (callId) => post({ type: "reviewRejectAll", callId }),
   };
 
