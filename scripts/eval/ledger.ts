@@ -27,6 +27,8 @@ export interface LedgerEntry {
   input: number;
   output: number;
   at: string;
+  /** Why an entry was corrected after the fact (the ledger is otherwise append-only). */
+  note?: string;
 }
 
 export interface LedgerTotals {

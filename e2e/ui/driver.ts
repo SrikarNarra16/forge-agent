@@ -47,14 +47,14 @@ export function assertFfmpeg(): void {
   if (!found) throw new Error("Playwright's ffmpeg is missing (needed for video). Run once: npx playwright-core install ffmpeg");
 }
 
-export async function launch(env: E2eEnvironment, options: { video: boolean }): Promise<Launched> {
+export async function launch(env: E2eEnvironment, options: { video: boolean; extraEnv?: Record<string, string> }): Promise<Launched> {
   if (options.video) assertFfmpeg();
   const videoDir = join(ROOT, "e2e-output", "video");
   await mkdir(videoDir, { recursive: true });
   const app = await electron.launch({
     executablePath: vscodeExecutable(),
     args: [...env.launchArgs, `--extensionDevelopmentPath=${ROOT}`],
-    env: { ...(process.env as Record<string, string>), FORGE_RESOURCE_PREFIX: env.prefix },
+    env: { ...(process.env as Record<string, string>), FORGE_RESOURCE_PREFIX: env.prefix, ...options.extraEnv },
     timeout: 90_000,
     ...(options.video ? { recordVideo: { dir: videoDir, size: { width: 1920, height: 1080 } } } : {}),
   });
@@ -121,6 +121,26 @@ export interface DriveLog {
   firstDiffAt?: number;
   /** Cards that the extension marked "auto-allowed (tier N)" (counted from the panel at the end). */
   commandsAutoAllowed: number;
+  /** How often the "Accept hunk" lens was missing for 10 s and the diff was closed and reopened (never more than once per review). */
+  lensRetries: number;
+}
+
+const LENS_WAIT_MS = 10_000;
+
+/**
+ * Waits for the "Accept hunk" lens of the open diff. If it does not show within 10 s: screenshot, close the diff tab and open it
+ * again from the queue, wait once more (10 s). Exactly one retry per review, always counted in `log.lensRetries` and printed;
+ * a second miss throws.
+ */
+async function showDiffWithLens(page: Page, row: ReturnType<Frame["locator"]>, screens: Screens, log: DriveLog): Promise<void> {
+  const lens = page.getByText("Accept hunk").first();
+  if (await lens.waitFor({ state: "visible", timeout: LENS_WAIT_MS }).then(() => true, () => false)) return;
+  log.lensRetries++;
+  console.log(`  RETRY ${log.lensRetries}: no "Accept hunk" lens within ${LENS_WAIT_MS / 1000} s; closing and reopening the diff once`);
+  await screens.shot(page, `lens-missing-retry-${log.lensRetries}`);
+  await page.keyboard.press(`${MOD}+W`); // closes the active (diff) editor tab
+  await row.click({ timeout: 10_000 }); // reopen from the queue entry
+  await lens.waitFor({ state: "visible", timeout: LENS_WAIT_MS }); // a second miss is a real failure
 }
 
 /**
@@ -128,7 +148,7 @@ export interface DriveLog {
  * CodeLens "Accept all" in the diff and the panel's "Apply accepted" button (Cmd+Enter only as a fallback). Returns when the panel says Done / Error / Stopped.
  */
 export async function drive(page: Page, frame: Frame, screens: Screens, options: { timeoutMs: number; prefix?: string }): Promise<DriveLog> {
-  const log: DriveLog = { commandsAllowed: 0, reviewsApplied: 0, appliedWithPanelButton: 0, lensSeen: false, commandsAutoAllowed: 0 };
+  const log: DriveLog = { commandsAllowed: 0, reviewsApplied: 0, appliedWithPanelButton: 0, lensSeen: false, commandsAutoAllowed: 0, lensRetries: 0 };
   const deadline = Date.now() + options.timeoutMs;
   let shotCommand = false;
   while (Date.now() < deadline) {
@@ -156,8 +176,7 @@ export async function drive(page: Page, frame: Frame, screens: Screens, options:
     if (await row.isVisible().catch(() => false)) {
       log.firstReviewAt ??= Date.now();
       await row.click(); // "Review diff" from the queue
-      const lens = page.getByText("Accept hunk").first();
-      await lens.waitFor({ state: "visible", timeout: 30_000 }); // CodeLens rendered in the real diff editor
+      await showDiffWithLens(page, row, screens, log); // CodeLens rendered in the real diff editor
       log.firstDiffAt ??= Date.now();
       if (!log.lensSeen) {
         log.lensSeen = true;

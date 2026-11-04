@@ -16,8 +16,10 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { DEFAULT_SPEND_LIMIT_USD, appendLedger, checkLimits, estimatedSpendUsd, formatUsd, readLedger, totalsOf } from "../../scripts/eval/ledger";
 import { describeError } from "../../src/trueforge/client";
-import { ROOT, createEnvironment, snapshotTrueForge, type E2eEnvironment } from "../env";
-import { countInWindow, formatTimingTable, parseForgeLog, timingRow, type TimingRow } from "./timing";
+import { BASE_URL, ROOT, createEnvironment, snapshotTrueForge, type E2eEnvironment } from "../env";
+import { fetchSessionUsage, type SessionUsage } from "./usage";
+import { classifyCommand } from "../../src/mcp/commandAllow";
+import { commandReport, commandsInWindow, countInWindow, formatTimingTable, parseForgeLog, timingRow, type TimingRow } from "./timing";
 import { MOD, drive, gitStatus, launch, makeScreens, openPanel, panelFrame, readWorkspaceFile, sendPrompt, statusText, until, verify, type Launched, type Screens } from "./driver";
 
 const exec = promisify(execFile);
@@ -37,6 +39,9 @@ interface TaskTiming {
   commandsAutoAllowed: number;
   reviewsApplied: number;
   appliedWithPanelButton: number;
+  lensRetries: number;
+  /** One line per task: how many run_command calls asked and why (filled in after the run). */
+  commandReport?: string;
   /** From the Forge log (filled in after the run). */
   modelCalls?: number;
   toolCalls?: number;
@@ -101,6 +106,7 @@ const timingOf = (sentAt: number, log: Awaited<ReturnType<typeof drive>>, verifi
   commandsAutoAllowed: log.commandsAutoAllowed,
   reviewsApplied: log.reviewsApplied,
   appliedWithPanelButton: log.appliedWithPanelButton,
+  lensRetries: log.lensRetries,
 });
 
 async function resetWorkspace(env: E2eEnvironment): Promise<void> {
@@ -136,8 +142,9 @@ async function readCounts(env: E2eEnvironment, results: StepResult[]): Promise<{
     r.timing.modelCalls = c.modelCalls;
     r.timing.toolCalls = c.toolCalls;
     r.timing.tokens = c.inputTokens + c.outputTokens;
+    r.timing.commandReport = commandReport(commandsInWindow(lines, r.timing.sentAt - 2000, r.timing.verifiedAt), (cmd) => classifyCommand(cmd) !== undefined);
     tokens += r.timing.tokens;
-    rows.push(timingRow(r.step.replace(/ \(.*\)$/, ""), r.timing, c, r.timing.commandClicks));
+    rows.push(timingRow(r.step.replace(/ \(.*\)$/, ""), r.timing, c, r.timing.commandClicks, r.timing.lensRetries));
   }
   return { tokens, rows };
 }
@@ -159,6 +166,7 @@ async function main(): Promise<number> {
   const autoAllow = mode === "rehearsal" && process.env["FORGE_UI_AUTOALLOW"] !== "0";
   const env = await createEnvironment(autoAllow ? { extraSettings: { "forge.autoAllowCommands.readOnly": true, "forge.autoAllowCommands.tests": true } } : {});
   let counted: { tokens: number; rows: TimingRow[] } = { tokens: 0, rows: [] };
+  let usage: SessionUsage | undefined;
   const runStarted = Date.now();
   const screens = await makeScreens();
   const results: StepResult[] = [];
@@ -206,6 +214,11 @@ async function main(): Promise<number> {
     if (launched) await screens.shot(launched.page, "failure").catch(() => undefined);
   } finally {
     await launched?.app.close().catch(() => undefined); // finalises the video
+    // TrueForge's own records count every token, also of a task that failed or timed out (read BEFORE the cleanup)
+    usage = await fetchSessionUsage(BASE_URL, env.prefix).catch((err: unknown) => {
+      console.error(`could not read TrueForge's session records: ${describeError(err)}`);
+      return undefined;
+    });
     counted = await readCounts(env, results).catch((err: unknown) => {
       console.error(`could not read the Forge log: ${describeError(err)}`);
       return counted;
@@ -216,20 +229,23 @@ async function main(): Promise<number> {
     await env.cleanup();
   }
 
-  const measured = counted.tokens > 0;
-  const spendTokens = measured ? counted.tokens : estimate;
+  const fromTrueForge = usage !== undefined;
+  const measured = fromTrueForge || counted.tokens > 0;
+  const spendTokens = usage ? usage.input + usage.output : measured ? counted.tokens : estimate;
   await appendLedger(ledgerFile, { runId: `ui-${mode}-${process.pid}`, task: "ui", model: "deepseek/*", attempt: 1, input: spendTokens, output: 0, at: new Date().toISOString() });
   const wallClock = (Date.now() - runStarted) / 1000;
   const timing = counted.rows.length > 0 ? formatTimingTable(counted.rows) : "";
-  const spend = `Spend of this run: ${measured ? "counted from the Forge log" : "ESTIMATE (the log could not be read)"}: ${spendTokens.toLocaleString("en-US")} tokens = ${formatUsd(estimatedSpendUsd(spendTokens))} at $0.08 per million tokens`;
+  const spend = `Spend of this run: ${fromTrueForge ? `counted from TrueForge session records (${usage?.sessions} session(s), ${usage?.turns} turn(s))` : measured ? "counted from the Forge log" : "ESTIMATE (neither TrueForge nor the log could be read)"}: ${spendTokens.toLocaleString("en-US")} tokens = ${formatUsd(estimatedSpendUsd(spendTokens))} at $0.08 per million tokens`;
+  console.log(`\n${spend}`);
+  const commandLines = results.filter((r) => r.timing?.commandReport).map((r) => `- ${r.step}: ${r.timing?.commandReport}`).join("\n");
   if (timing) {
-    console.log(`\n${timing}\n\n${spend}\nAuto-allow switches: ${autoAllow ? "both ON" : "off"}. Whole script wall-clock (launch to close): ${wallClock.toFixed(0)} s.`);
+    console.log(`\n${timing}\n\nCommands (no-pipes rule unchanged):\n${commandLines}\nAuto-allow switches: ${autoAllow ? "both ON" : "off"}. Whole script wall-clock (launch to close): ${wallClock.toFixed(0)} s.`);
     await writeFile(join(ROOT, "e2e-output", `rehearsal-timing.json`), JSON.stringify({ at: new Date().toISOString(), autoAllow, tokens: spendTokens, measured, rows: counted.rows }, null, 2), "utf8");
   }
   const rows = results.map((r) => `| ${r.ok ? "PASS" : "FAIL"} | ${r.step} | ${r.seconds.toFixed(0)} s | ${r.detail.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 400)} |`);
   const table = ["| Result | Step | Time | Detail |", "|---|---|---|---|", ...rows].join("\n");
   console.log(`\n${table}\n\nScreenshots: e2e-output/screens/   Video: e2e-output/video/ (1920x1080)`);
-  await appendFile(join(ROOT, "docs", "e2e-results.md"), `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} (UI layer, ${mode === "b" ? "Task B smoke test" : "rehearsal A+B+C"}, Playwright)\n\n${table}\n\n${timing ? `${timing}\n\n${spend}. Auto-allow switches: ${autoAllow ? "both ON" : "off"}.\n\n` : ""}`, "utf8");
+  await appendFile(join(ROOT, "docs", "e2e-results.md"), `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} (UI layer, ${mode === "b" ? "Task B smoke test" : "rehearsal A+B+C"}, Playwright)\n\n${table}\n\n${timing ? `${timing}\n\nCommands (no-pipes rule unchanged):\n${commandLines}\n\n${spend}. Auto-allow switches: ${autoAllow ? "both ON" : "off"}.\n\n` : ""}`, "utf8");
   return results.every((r) => r.ok) ? 0 : 1;
 }
 

@@ -288,6 +288,42 @@ const acceptAllAndApply: Scenario = {
   },
 };
 
+/** The lens provider answers for a freshly opened review diff, every time: 30 rounds, checked right after the open and again after the +1 s re-fire. (What the editor then DRAWS is checked by `npm run test:ui:lens`.) */
+const lensLoop: Scenario = {
+  id: "14",
+  name: "CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s",
+  live: false,
+  async run(cfg) {
+    const failures: string[] = [];
+    const titles = async (callId: string): Promise<string[]> => {
+      const uri = vscode.Uri.from({ scheme: "forge-proposal", path: `/${callId}/proposal/src/flask/helpers.py` });
+      const lenses = (await vscode.commands.executeCommand("vscode.executeCodeLensProvider", uri)) as vscode.CodeLens[] | undefined;
+      return (lenses ?? []).map((l) => l.command?.title ?? "");
+    };
+    const complete = (t: string[]): boolean => ["Accept all", "Reject all"].every((x) => t.includes(x)) && t.filter((x) => x.includes("Accept hunk")).length === 3 && t.some((x) => x.startsWith("Apply ("));
+    for (let i = 1; i <= 30; i++) {
+      await resetWorkspace(cfg);
+      const count = (await state()).review.length;
+      await startFakeProposal(cfg);
+      const review = await waitFor("the review entry", async () => {
+        const st = await state();
+        return st.review.length > count ? st.review.at(-1) : undefined;
+      }, 10_000, 25);
+      const first = await titles(review.callId);
+      await sleep(1100); // past the +250 ms and +1 s re-fires
+      const later = await titles(review.callId);
+      if (!complete(first)) failures.push(`round ${i} right after the open: ${JSON.stringify(first)}`);
+      if (!complete(later)) failures.push(`round ${i} after 1.1 s: ${JSON.stringify(later)}`);
+      await vscode.commands.executeCommand("forge.reviewRejectAll", review.callId);
+      await waitFor(`round ${i}: the review to finish`, async () => ((await state()).review.at(-1)?.state === "rejected" ? true : undefined), 10_000, 25);
+      const gone = await titles(review.callId);
+      if (gone.length !== 0) failures.push(`round ${i}: lenses still offered after the review finished: ${JSON.stringify(gone)}`);
+    }
+    assert(failures.length === 0, `${failures.length} problem(s): ${failures.slice(0, 3).join(" | ")}`);
+    return { detail: "30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished" };
+  },
+};
+
 /** Counts lines of the test instance\'s Forge output channel log that match (the log lives in the temp user-data-dir). */
 async function countForgeLog(cfg: E2eConfig, pattern: RegExp): Promise<number> {
   if (!cfg.userDataDir) return 0;
@@ -463,6 +499,6 @@ const brokenOnly: Scenario = {
   },
 };
 
-export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, rejectHunkLoop, panelButtons, acceptAllAndApply, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
+export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, rejectHunkLoop, panelButtons, acceptAllAndApply, lensLoop, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
 export { noHooksNote, resetWorkspace, sleep };
 export type { ScenarioResult };

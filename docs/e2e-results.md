@@ -161,3 +161,165 @@ Scenario 6 failed twice in that pass. The first failure was a bug in the test (i
 |---|---|---|---|
 | FAIL | UI flow | 0 s | stopped: locator.waitFor: Timeout 30000ms exceeded. Call log:   - waiting for getByText('Accept hunk').first() to be visible  |
 
+## 2026-11-04 11:35 (UI layer, CodeLens loop, hermetic, Playwright)
+
+30 of 30 rounds run, 30 failure(s) (lens text not visible within 5 s): rounds 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
+- "Accept all" lens: n/a
+- "Accept hunk" lens: min 420 ms / median 426 ms / max 486 ms
+
+## 2026-11-04 11:36 (UI layer, CodeLens loop, hermetic, Playwright)
+
+plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 418 ms / median 429 ms / max 481 ms
+
+## 2026-11-04 11:36 (UI layer, CodeLens loop, double open, hermetic, Playwright)
+
+with the queue row clicked right after the diff opened (driver-like double open): 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 455 ms / median 463 ms / max 538 ms
+
+## 2026-11-04 11:38 (UI layer, CodeLens loop, Task A proposal, hermetic, Playwright)
+
+Task A proposal (pure-insertion hunk + code hunk), plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 411 ms / median 433 ms / max 826 ms
+
+## 2026-11-04 11:38 (UI layer, CodeLens loop, Task A proposal, double open, hermetic, Playwright)
+
+Task A proposal (pure-insertion hunk + code hunk), queue row clicked right after the diff opened (driver-like double open): 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 461 ms / median 469 ms / max 822 ms
+
+## 2026-11-04 11:40 (hermetic run, pid 42186)
+
+| # | Result | Kind | Time | Scenario | Detail |
+|---|---|---|---|---|---|
+| 0 | PASS | hermetic | 0.0 s | Normal activation (no FORGE_E2E) registers no forge.e2e.* command | 24 forge.* commands, none of them forge.e2e.* |
+| 3 | PASS | hermetic | 0.4 s | After an apply, ONE real `undo` restores the pre-apply text (single undo step) | one undo restored the exact pre-apply text (3 hunks applied as one undo step) |
+| 14 | PASS | hermetic | 38.4 s | CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s | 30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished |
+
+## 2026-11-04 11:43 (hermetic run, pid 44074)
+
+| # | Result | Kind | Time | Scenario | Detail |
+|---|---|---|---|---|---|
+| 0 | PASS | hermetic | 0.0 s | Normal activation (no FORGE_E2E) registers no forge.e2e.* command | 24 forge.* commands, none of them forge.e2e.* |
+| 10 | PASS | hermetic | 0.3 s | Forge panel view resolves and posts its init state; CodeLens provider returns Accept/Reject lenses | panel resolved (ready x1); 9 lenses: Accept all, Reject all, Apply (0 of 3 accepted) ▸, ✓ Accept hunk, ✗ Reject hunk |
+| 3 | PASS | hermetic | 0.4 s | After an apply, ONE real `undo` restores the pre-apply text (single undo step) | one undo restored the exact pre-apply text (3 hunks applied as one undo step) |
+| 4 | PASS | hermetic | 0.5 s | Undo run restores the files (Fake Proposal) | git status clean after Undo run |
+| 11 | PASS | hermetic | 3.2 s | Reject hunk 1, accept the rest, apply: 10 times in a row with the file not open in any editor (no model) | 10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged 0 closed-document retries (0 where the edit had already landed and only needed saving); 31 Forge log lines read |
+| 12 | PASS | hermetic | 0.6 s | Panel buttons: 'Apply accepted' with 2 of 3 hunks (1 undecided) writes 2, one undo restores; 'Reject all' writes nothing | Apply accepted: "2 of 3 hunks accepted, 1 undecided", 2 hunks on disk (hunk 1 absent), a double click applied once, ONE undo restored the exact text; Reject all: state rejected, git clean, a stale Apply click ignored |
+| 13 | PASS | hermetic | 0.8 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
+| 14 | PASS | hermetic | 38.3 s | CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s | 30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished |
+| 1 | SKIP | live | 0.0 s | Task A inline edit, accept all -> verify-task-a PASS | needs E2E_LIVE=1 (real model) |
+| 2 | SKIP | live | 0.0 s | Task A partial accept (reject the code hunk) -> only the docstring changed | needs E2E_LIVE=1 (real model) |
+| 5 | SKIP | live | 0.0 s | Task B via the panel, accept all -> verify-task-b PASS | needs E2E_LIVE=1 (real model) |
+| 6 | SKIP | live | 0.0 s | Task B with one rejected hunk -> the agent is told and the result is reported | needs E2E_LIVE=1 (real model) |
+| 7 | SKIP | live | 0.0 s | Stop mid-run -> state cancelled, workspace pristine (git status clean) | needs E2E_LIVE=1 (real model) |
+| 8 | SKIP | live | 0.0 s | Task C: chain [broken-endpoint/broken, deepseek/flash] -> fallback notice, pristine before the first apply, Task A PASS | needs E2E_LIVE=1 (real model) |
+| 9 | SKIP | live | 0.0 s | Task C: chain [broken-endpoint/broken] only -> clear error, pristine workspace | needs E2E_LIVE=1 (real model) |
+
+## 2026-11-04 11:43 (UI layer, panel controls smoke, hermetic, Playwright)
+
+| Result | Step | Detail |
+|---|---|---|
+| PASS | command prefix shown | "Commands run with: . .venv/bin/activate &&" |
+| PASS | Open in TrueForge button | title: No run yet: opens the TrueForge Sessions list |
+| PASS | initial status line | "0 of 3 hunks accepted, 3 undecided" |
+| PASS | Apply is disabled with nothing accepted | disabled |
+| PASS | Accept all and apply is enabled while hunks are undecided | enabled |
+| PASS | undecided note | "Undecided hunks count as rejected: they will not be applied." |
+| PASS | Apply is enabled | enabled |
+| PASS | success line | "Applied 1 of 3 hunks; 2 not applied (rejected or undecided)." |
+| PASS | edits on disk | hunks written: 1 (the two undecided hunks were not written) |
+| PASS | no buttons left on a finished review | the card shows only its result line |
+| PASS | Reject all | "Rejected: nothing was written." |
+| PASS | Accept all and apply | "Applied 3 of 3 hunks."; 3 new edits on disk |
+| PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
+
+## 2026-11-04 11:44 (UI layer, CodeLens loop, Task A proposal, double open, hermetic, Playwright)
+
+Task A proposal (pure-insertion hunk + code hunk), queue row clicked right after the diff opened (driver-like double open): 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 705 ms / median 718 ms / max 753 ms
+
+## 2026-11-04 11:44 (UI layer, CodeLens loop, hermetic, Playwright)
+
+Fake Proposal markers, plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 676 ms / median 692 ms / max 739 ms
+
+## 2026-11-04 11:45 (UI layer, CodeLens loop, hermetic, Playwright)
+
+Fake Proposal markers, plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 675 ms / median 688 ms / max 724 ms
+
+## 2026-11-04 11:45 (UI layer, CodeLens loop, hermetic, Playwright)
+
+Fake Proposal markers, plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 418 ms / median 437 ms / max 488 ms
+
+## 2026-11-04 11:46 (UI layer, CodeLens loop, hermetic, Playwright)
+
+Fake Proposal markers, plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 419 ms / median 439 ms / max 463 ms
+
+## 2026-11-04 11:46 (UI layer, CodeLens loop, Task A proposal, double open, hermetic, Playwright)
+
+Task A proposal (pure-insertion hunk + code hunk), queue row clicked right after the diff opened (driver-like double open): 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 451 ms / median 461 ms / max 557 ms
+
+## 2026-11-04 11:47 (UI layer, CodeLens loop, hermetic, Playwright)
+
+Fake Proposal markers, plain open: 30 of 30 rounds run, 0 failure(s) ("Accept hunk" lens not visible within 5 s)
+- "Accept hunk" lens: min 421 ms / median 434 ms / max 463 ms
+
+## 2026-11-04 11:47 (hermetic run, pid 47166)
+
+| # | Result | Kind | Time | Scenario | Detail |
+|---|---|---|---|---|---|
+| 0 | PASS | hermetic | 0.0 s | Normal activation (no FORGE_E2E) registers no forge.e2e.* command | 24 forge.* commands, none of them forge.e2e.* |
+| 10 | PASS | hermetic | 0.3 s | Forge panel view resolves and posts its init state; CodeLens provider returns Accept/Reject lenses | panel resolved (ready x1); 9 lenses: Accept all, Reject all, Apply (0 of 3 accepted) ▸, ✓ Accept hunk, ✗ Reject hunk |
+| 3 | PASS | hermetic | 0.3 s | After an apply, ONE real `undo` restores the pre-apply text (single undo step) | one undo restored the exact pre-apply text (3 hunks applied as one undo step) |
+| 4 | PASS | hermetic | 0.4 s | Undo run restores the files (Fake Proposal) | git status clean after Undo run |
+| 11 | PASS | hermetic | 3.2 s | Reject hunk 1, accept the rest, apply: 10 times in a row with the file not open in any editor (no model) | 10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged 0 closed-document retries (0 where the edit had already landed and only needed saving); 38 Forge log lines read |
+| 12 | PASS | hermetic | 0.6 s | Panel buttons: 'Apply accepted' with 2 of 3 hunks (1 undecided) writes 2, one undo restores; 'Reject all' writes nothing | Apply accepted: "2 of 3 hunks accepted, 1 undecided", 2 hunks on disk (hunk 1 absent), a double click applied once, ONE undo restored the exact text; Reject all: state rejected, git clean, a stale Apply click ignored |
+| 13 | PASS | hermetic | 0.7 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
+
+## 2026-11-04 11:49 (UI layer, panel controls smoke, hermetic, Playwright)
+
+| Result | Step | Detail |
+|---|---|---|
+| FAIL | UI flow | page.waitForSelector: Timeout 90000ms exceeded. Call log:   - waiting for locator('.monaco-workbench') to be visible  |
+| PASS | workspace after the run | git status: ?? .venv/bin/activate (the first review was applied on purpose) |
+
+## 2026-11-04 11:49 (UI layer, panel controls smoke, hermetic, Playwright)
+
+| Result | Step | Detail |
+|---|---|---|
+| PASS | command prefix shown | "Commands run with: . .venv/bin/activate &&" |
+| PASS | Open in TrueForge button | title: No run yet: opens the TrueForge Sessions list |
+| PASS | initial status line | "0 of 3 hunks accepted, 3 undecided" |
+| PASS | Apply is disabled with nothing accepted | disabled |
+| PASS | Accept all and apply is enabled while hunks are undecided | enabled |
+| PASS | undecided note | "Undecided hunks count as rejected: they will not be applied." |
+| PASS | Apply is enabled | enabled |
+| PASS | success line | "Applied 1 of 3 hunks; 2 not applied (rejected or undecided)." |
+| PASS | edits on disk | hunks written: 1 (the two undecided hunks were not written) |
+| PASS | no buttons left on a finished review | the card shows only its result line |
+| PASS | Reject all | "Rejected: nothing was written." |
+| PASS | Accept all and apply | "Applied 3 of 3 hunks."; 3 new edits on disk |
+| PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
+
+## 2026-11-04 11:49 (UI layer, panel controls smoke, hermetic, Playwright)
+
+| Result | Step | Detail |
+|---|---|---|
+| PASS | command prefix shown | "Commands run with: . .venv/bin/activate &&" |
+| PASS | Open in TrueForge button | title: No run yet: opens the TrueForge Sessions list |
+| PASS | initial status line | "0 of 3 hunks accepted, 3 undecided" |
+| PASS | Apply is disabled with nothing accepted | disabled |
+| PASS | Accept all and apply is enabled while hunks are undecided | enabled |
+| PASS | undecided note | "Undecided hunks count as rejected: they will not be applied." |
+| PASS | Apply is enabled | enabled |
+| PASS | success line | "Applied 1 of 3 hunks; 2 not applied (rejected or undecided)." |
+| PASS | edits on disk | hunks written: 1 (the two undecided hunks were not written) |
+| PASS | no buttons left on a finished review | the card shows only its result line |
+| PASS | Reject all | "Rejected: nothing was written." |
+| PASS | Accept all and apply | "Applied 3 of 3 hunks."; 3 new edits on disk |
+| PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
+
