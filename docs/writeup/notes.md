@@ -122,7 +122,7 @@ M; actual/estimate R`. E is chars/4 of the whole model-facing message (block + r
 is exactly that message, so R = M / E is the honest ratio; on later turns M also contains history, so the log subtracts
 the previous run's last M and marks the number approximate. The panel shows `inputTokens` of the run's first model call
 as "model input tokens". OBSERVED RATIO: not measured yet; no live panel run has happened in this prompt (the new
-panel needs a real editor window). Record the first ratios here after the manual steps in PROGRESS.md. The 1.15 factor
+panel needs a real editor window). Record the first ratios here after the manual steps in docs/cancel-tests.md. The 1.15 factor
 is a guess until then (code tokenizes at roughly 3-3.5 characters per token on common tokenizers, so chars/4 tends to
 under-count code by 10-30%).
 

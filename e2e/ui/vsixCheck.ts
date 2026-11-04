@@ -50,7 +50,8 @@ async function main(): Promise<number> {
     const cli = codeCli();
     const base = ["--user-data-dir", env.userData, "--extensions-dir", extDir];
     const installed = await exec(cli, [...base, "--install-extension", resolve(vsix)], { timeout: 120_000 });
-    check("install into an empty profile", /successfully installed/i.test(installed.stdout + installed.stderr), (installed.stdout + installed.stderr).trim().split("\n").pop() ?? "");
+    const installOut = `${installed.stdout}\n${installed.stderr}`;
+    check("install into an empty profile", /successfully installed/i.test(installOut), installOut.split("\n").find((l) => /successfully installed/i.test(l))?.trim() ?? "no confirmation line");
     const listed = (await exec(cli, [...base, "--list-extensions", "--show-versions"], { timeout: 60_000 })).stdout.trim();
     check("extension is listed", /forge-local\.forge-agent@/.test(listed), listed);
 

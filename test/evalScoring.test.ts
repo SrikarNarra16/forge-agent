@@ -34,7 +34,7 @@ describe("import-path check", () => {
   it("recognises files inside the copy's src/ only", () => {
     expect(isInsideCopy("/tmp/x/flask", "/tmp/x/flask/src/flask/__init__.py")).toBe(true);
     expect(isInsideCopy("/tmp/x/flask", "/tmp/x/flask/src2/flask/__init__.py")).toBe(false);
-    expect(isInsideCopy("/tmp/x/flask", "/Users/me/fixtures/flask/src/flask/__init__.py")).toBe(false);
+    expect(isInsideCopy("/tmp/x/flask", "/work/me/fixtures/flask/src/flask/__init__.py")).toBe(false);
     expect(pythonEnv("/tmp/x/flask")["PYTHONPATH"]).toBe("/tmp/x/flask/src");
   });
   it.skipIf(!haveFixture)("aborts loudly when flask resolves outside the copy", async () => {

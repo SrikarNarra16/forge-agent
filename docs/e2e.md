@@ -14,7 +14,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 ## Prerequisites
 - Node >= 22.14; `npm install`; `npm run build` (the tests load `dist/extension.js`).
 - VS Code: found at `/Applications/Visual Studio Code.app/Contents/MacOS/Code`; set `VSCODE_EXE` for another install. Nothing is downloaded.
-- The Flask fixture with its virtualenv (`fixtures/flask`, see docs/PROGRESS.md P00). It is only cloned from.
+- The Flask fixture with its virtualenv: `scripts/setup-fixture.sh` creates `../fixtures/flask` (next to the repository; `FIXTURE_DIR` overrides). It is only cloned from.
 - Live runs: TrueForge running via `npm run tf:start`, the model providers registered, and for Task C the demo providers (`npm run tf:setup -- --only-demo`).
 - Layer 2 only (one time): `npx playwright-core install ffmpeg` (Playwright's recorder; without it VS Code's window never attaches when video is on).
 

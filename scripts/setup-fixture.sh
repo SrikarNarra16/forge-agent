@@ -11,6 +11,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURE="${FIXTURE_DIR:-$HERE/../../fixtures/flask}"
+mkdir -p "$(dirname "$FIXTURE")"
+FIXTURE="$(cd "$FIXTURE" 2>/dev/null && pwd || (cd "$(dirname "$FIXTURE")" && echo "$(pwd)/$(basename "$FIXTURE")"))" # absolute, without ..
 PY="${PYTHON:-python3}"
 PIN="22d924701a6ae2e4cd01e9a15bbaf3946094af65"
 
