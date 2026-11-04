@@ -5,8 +5,19 @@ import { dirname } from "node:path";
  * Cost guard: every eval attempt appends its token usage here (eval-output/ledger.jsonl, gitignored), so the
  * running total survives across invocations. The runner stops when a limit would be exceeded.
  */
-export const DEFAULT_TOKEN_LIMIT = 4_000_000;
-export const DEFAULT_RUN_LIMIT = 40;
+
+/** Dollar-based guard (the user's DeepSeek bill: about 7 cents per million tokens; we assume 8 to stay on the safe side). */
+export const USD_PER_MILLION_TOKENS = 0.08;
+export const DEFAULT_SPEND_LIMIT_USD = 3;
+/** No attempt or token cap by default (the iteration and run counts are set by the task); --run-limit / --token-limit add one. */
+export const DEFAULT_RUN_LIMIT = Number.POSITIVE_INFINITY;
+export const DEFAULT_TOKEN_LIMIT = Number.POSITIVE_INFINITY;
+
+export function estimatedSpendUsd(totalTokens: number, pricePerMillion = USD_PER_MILLION_TOKENS): number {
+  return (totalTokens / 1_000_000) * pricePerMillion;
+}
+
+export const formatUsd = (usd: number): string => `$${usd.toFixed(2)}`;
 
 export interface LedgerEntry {
   runId: string;
@@ -59,8 +70,12 @@ export async function appendLedger(file: string, entry: LedgerEntry): Promise<vo
 export type LimitCheck = { ok: true } | { ok: false; reason: string };
 
 /** Whether another attempt may start. */
-export function checkLimits(totals: LedgerTotals, limits: { tokens: number; runs: number }): LimitCheck {
-  if (totals.total >= limits.tokens) return { ok: false, reason: `TOKEN LIMIT: ${totals.total.toLocaleString("en-US")} tokens used so far (limit ${limits.tokens.toLocaleString("en-US")}). Stop and ask before continuing.` };
-  if (totals.attempts >= limits.runs) return { ok: false, reason: `RUN LIMIT: ${totals.attempts} eval attempts so far (limit ${limits.runs}). Stop and ask before continuing.` };
+export function checkLimits(totals: LedgerTotals, limits: { tokens?: number; runs?: number; usd?: number }): LimitCheck {
+  const spend = estimatedSpendUsd(totals.total);
+  if (limits.usd !== undefined && spend >= limits.usd) {
+    return { ok: false, reason: `SPEND LIMIT: estimated ${formatUsd(spend)} spent so far (${totals.total.toLocaleString("en-US")} tokens at ${formatUsd(USD_PER_MILLION_TOKENS)} per million; limit ${formatUsd(limits.usd)}). Stop and ask before continuing.` };
+  }
+  if (limits.tokens !== undefined && totals.total >= limits.tokens) return { ok: false, reason: `TOKEN LIMIT: ${totals.total.toLocaleString("en-US")} tokens used so far (limit ${limits.tokens.toLocaleString("en-US")}). Stop and ask before continuing.` };
+  if (limits.runs !== undefined && totals.attempts >= limits.runs) return { ok: false, reason: `RUN LIMIT: ${totals.attempts} eval attempts so far (limit ${limits.runs}). Stop and ask before continuing.` };
   return { ok: true };
 }

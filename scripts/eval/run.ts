@@ -41,7 +41,7 @@ import { randomCuts } from "./cuts";
 import { parseChainArgs, expectsExhaustion } from "./chainArgs";
 import type { ChainEvent } from "../../src/trueforge/modelChain";
 import { agentName, assertThrowaway, extrasName, mcpName, snapshotDiff, type Snapshot } from "./guard";
-import { DEFAULT_RUN_LIMIT, DEFAULT_TOKEN_LIMIT, appendLedger, checkLimits, readLedger, totalsOf } from "./ledger";
+import { DEFAULT_RUN_LIMIT, DEFAULT_SPEND_LIMIT_USD, DEFAULT_TOKEN_LIMIT, appendLedger, checkLimits, estimatedSpendUsd, formatUsd, readLedger, totalsOf } from "./ledger";
 import { OutageGuard, ProviderOutage, classifyFailure, withRetries } from "./retry";
 import { deriveSignals } from "./signals";
 import { appendResults, formatContextLink, formatSummary, type EvalCheck, type RunReport } from "./report";
@@ -482,9 +482,9 @@ async function main(): Promise<number> {
   process.once("unhandledRejection", (e) => abort(`unhandled rejection: ${describeError(e)}`));
 
   const ledgerFile = join(ROOT, "eval-output", "ledger.jsonl");
-  const limits = { tokens: Number(arg("--token-limit", String(DEFAULT_TOKEN_LIMIT))), runs: Number(arg("--run-limit", String(DEFAULT_RUN_LIMIT))) };
+  const limits = { tokens: Number(arg("--token-limit", String(DEFAULT_TOKEN_LIMIT))), runs: Number(arg("--run-limit", String(DEFAULT_RUN_LIMIT))), usd: Number(arg("--spend-limit", String(DEFAULT_SPEND_LIMIT_USD))) };
   const startTotals = totalsOf(await readLedger(ledgerFile));
-  log(`Cost guard: ${startTotals.attempts} attempt(s) and ${startTotals.total.toLocaleString("en-US")} tokens used so far (limits: ${limits.runs} attempts, ${limits.tokens.toLocaleString("en-US")} tokens)`);
+  log(`Cost guard: estimated spend ${formatUsd(estimatedSpendUsd(startTotals.total))} of ${formatUsd(limits.usd)} so far (${startTotals.total.toLocaleString("en-US")} tokens over ${startTotals.attempts} counted attempt(s); $0.08 per million tokens)`);
 
   const initial = checkLimits(startTotals, limits);
   if (!initial.ok) {
@@ -502,7 +502,7 @@ async function main(): Promise<number> {
         await appendLedger(ledgerFile, entry);
         outage.record(!report.pass && report.providerError);
         const totals = totalsOf(await readLedger(ledgerFile));
-        log(`    cost guard: running total ${totals.total.toLocaleString("en-US")} tokens (${totals.input.toLocaleString("en-US")} in / ${totals.output.toLocaleString("en-US")} out) over ${totals.attempts} counted attempt(s) (+${totals.providerFailures} provider failure(s) with no tokens, not counted)`);
+        log(`    cost guard: estimated spend ${formatUsd(estimatedSpendUsd(totals.total))} of ${formatUsd(limits.usd)} (${totals.total.toLocaleString("en-US")} tokens:${totals.input.toLocaleString("en-US")} in / ${totals.output.toLocaleString("en-US")} out) over ${totals.attempts} counted attempt(s) (+${totals.providerFailures} provider failure(s) with no tokens, not counted)`);
         return report;
       }),
       {
@@ -529,7 +529,7 @@ async function main(): Promise<number> {
   }
   if (stopped) log(`\nSTOPPED EARLY: ${stopped}`);
   const finalTotals = totalsOf(await readLedger(ledgerFile));
-  log(`Cost guard total: ${finalTotals.total.toLocaleString("en-US")} tokens (${finalTotals.input.toLocaleString("en-US")} in / ${finalTotals.output.toLocaleString("en-US")} out) over ${finalTotals.attempts} attempt(s)`);
+  log(`Cost guard total: estimated spend ${formatUsd(estimatedSpendUsd(finalTotals.total))} (${finalTotals.total.toLocaleString("en-US")} tokens:${finalTotals.input.toLocaleString("en-US")} in / ${finalTotals.output.toLocaleString("en-US")} out) over ${finalTotals.attempts} attempt(s)`);
 
   const after = await snapshot();
   log(`\nTrueForge after:  agents=${JSON.stringify(after.agents)} mcp=${JSON.stringify(after.mcp)}`);
