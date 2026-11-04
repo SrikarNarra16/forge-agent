@@ -1,10 +1,36 @@
+# dependencies and build output
 node_modules
 out
 dist
-.env
-trueforge/models.local.json
-*.vsix
-.vscode-test
 coverage
+.vscode-test
+*.vsix
+
+# secrets and local configuration: never commit
+.env
+.env.*
+trueforge/models.local.json
+*.pem
+*.key
+
+# test, evaluation and recording output (can be large, can contain run data)
 eval-output
 e2e-output
+*.webm
+*.mp4
+*.png.tmp
+ledger*.jsonl
+
+# the Flask fixture lives next to the repo (../fixtures), but keep it out if someone puts it here
+/fixtures/
+
+# local TrueForge data and logs
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.log
+.trueforge
+
+# OS / editor
+.DS_Store

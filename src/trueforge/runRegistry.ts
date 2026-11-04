@@ -45,5 +45,3 @@ export class RunCancelledError extends Error {
     this.name = "RunCancelledError";
   }
 }
-
-export const CANCELLED_TOOL_MESSAGE = "This run was cancelled by the user, so nothing was changed. Do not retry; wait for the user's next message.";

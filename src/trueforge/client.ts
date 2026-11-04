@@ -18,9 +18,6 @@ export const FORGE_EDITOR_SERVER = "forge-editor";
 export const FORGE_EXTRAS_SERVER = "forge-editor-extras";
 export const EXTRAS_DESCRIPTION = "Forge extra editor tools, discovered on demand: git_status, git_diff, find_references, open_in_editor (all read-only)";
 
-/** Name of the saved agent used by the smoke test and the agent panel. */
-export const FORGE_AGENT_NAME = "forge-agent";
-
 /** Exact command that starts TrueForge so it may call our loopback MCP server (SSRF guard allow-list). */
 export const TRUEFORGE_START_COMMAND =
   `OUTBOUND_URL_ALLOWED_HOSTS='["localhost","127.0.0.1"]' MODEL_HTTP_CONNECT_TIMEOUT_MS=3000 MODEL_HTTP_MAX_RETRIES=1 npx @truefoundry/trueforge@latest`;

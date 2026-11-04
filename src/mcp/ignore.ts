@@ -40,7 +40,3 @@ export function createGlobMatcher(globs: readonly string[]): (relPath: string) =
   const ig = ignore().add([...globs]);
   return (relPath) => ig.ignores(relPath);
 }
-
-export function matchesGlobs(relPath: string, globs: readonly string[]): boolean {
-  return createGlobMatcher(globs)(relPath);
-}
