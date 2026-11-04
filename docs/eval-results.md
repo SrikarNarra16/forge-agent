@@ -156,3 +156,17 @@ Re-scored from the recorded events (`npx tsx scripts/eval/rescore.ts`; the recon
 | Provider-error runs (`62476-*`, `63115-r1`, `79515-*`) | FAIL | FAIL (no usable answer) |
 
 ### Iteration 2 = confirming run: instructions UNCHANGED from iteration 1 (consistency check under the corrected scorer)
+| 2026-11-04-11172-r1 | 2026-11-04 | B | deepseek/flash | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 396025/6904 | 52s; 21 model calls; repo_map×1 search_code×4 read_file×10 propose_edit×5 run_command×4 list_tools×1 get_tool_info×1 call_tool×1 get_diagnostics×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-11172-r2 | 2026-11-04 | B | deepseek/flash | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 326369/6984 | 46s; 17 model calls; get_symbols×1 search_code×4 read_file×9 propose_edit×4 run_command×3 list_tools×1 get_tool_info×1 call_tool×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-11172-r3 | 2026-11-04 | B | deepseek/flash | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 516871/10955 | 74s; 23 model calls; run_command×5 search_code×8 get_symbols×1 read_file×14 propose_edit×4 list_tools×1 get_tool_info×1 call_tool×1 get_diagnostics×2; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-11172-r4 | 2026-11-04 | B | deepseek/flash | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 663504/9856 | 71s; 27 model calls; list_tools×1 repo_map×1 read_file×14 search_code×6 get_symbols×1 run_command×5 propose_edit×7 call_tool×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+| 2026-11-04-11172-r5 | 2026-11-04 | B | deepseek/flash | PASS | a✓ b✓ c✓ d✓ e✓ f✓ g✓ | 529714/9608 | 72s; 27 model calls; list_tools×1 get_symbols×1 read_file×13 search_code×10 propose_edit×4 run_command×6 call_tool×1; changed 4 (4 surfaced in context); key files in context 3/3, read 3/3; tests yes, deferred yes, scout no |
+
+Result of iteration 2 (instructions unchanged, scorer as corrected): **5/5** pass (a-g all 5/5), 24-37 tool calls and 17-27 model calls per run, 326k-664k tokens, 46-74 s. Spend about $0.20 (estimated total $0.71 of $3.00, 8.90M tokens). Behaviour: ran tests 5/5, git_diff via deferred loading 5/5, scout 0/5.
+**Stop rule met**: iteration 1 re-scored 5/5 and iteration 2 5/5, i.e. >= 4/5 twice in a row. Two tuning iterations were enough (of the 6 allowed); the instructions of iteration 1 are final.
+
+| Stage (flash, Task B) | Pass (corrected scorer) | Pass (scorer as it was) | Tokens/run (mean) | Model calls/run | Tool calls/run (min / mean / max) | Seconds/run | Spend |
+|---|---|---|---|---|---|---|---|
+| Baseline, instructions of P08 (`1921-r1..r4`) | 4/4 | 2/4 | 568k | 20-29 (mean 25.3) | 32 / 37.8 / 41 | 67 | $0.18 |
+| Iteration 1: FEATURES step (`8383-r1..r5`) | 5/5 | 3/5 | 433k | 19-25 (mean 21.4) | 28 / 30.4 / 32 | 55 | $0.17 |
+| Iteration 2: unchanged, confirming (`11172-r1..r5`) | 5/5 | 5/5 | 495k | 17-27 (mean 23.0) | 24 / 32.2 / 37 | 63 | $0.20 |
