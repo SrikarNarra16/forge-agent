@@ -117,6 +117,58 @@ const undoRun: Scenario = {
   },
 };
 
+/** The applier race behind scenario 6 ("Document has been closed"): the target file is NOT open in any editor, hunk 1 is rejected, the rest accepted. No model involved. */
+const rejectHunkLoop: Scenario = {
+  id: "11",
+  name: "Reject hunk 1, accept the rest, apply: 10 times in a row with the file not open in any editor (no model)",
+  live: false,
+  async run(cfg) {
+    const failures: string[] = [];
+    for (let i = 1; i <= 10; i++) {
+      await resetWorkspace(cfg); // closes every editor: helpers.py is not open when the proposal is applied
+      const before = await state();
+      void Promise.resolve(vscode.commands.executeCommand("forge.fakeProposal")).catch(() => undefined);
+      try {
+        await decide("rejectIndexOfFirst:0");
+        const done = await waitFor(`round ${i}: the review to finish`, async () => {
+          const st = await state();
+          const r = st.review.at(-1);
+          return st.review.length > before.review.length && r && ["applied", "rejected", "failed", "cancelled"].includes(r.state) ? r : undefined;
+        }, 20_000, 50);
+        await decide("stop");
+        if (done.state !== "applied" || done.applied !== 2 || done.hunks !== 3) failures.push(`round ${i}: ${done.state} ${done.applied ?? "?"} of ${done.hunks ?? "?"} hunks${done.detail ? ` (${done.detail})` : ""}`);
+        else {
+          const text = await readFile(`${cfg.workspace}/src/flask/helpers.py`, "utf8");
+          const marks = (text.match(/forge fake proposal \d/g) ?? []).length;
+          if (marks !== 2) failures.push(`round ${i}: expected 2 of 3 edits on disk, found ${marks}`);
+        }
+      } catch (err) {
+        await decide("stop");
+        failures.push(`round ${i}: ${err instanceof Error ? err.message : String(err)}`);
+        await vscode.commands.executeCommand("forge.reviewRejectAll").then(undefined, () => undefined);
+      }
+    }
+    assert(failures.length === 0, `${failures.length} of 10 rounds failed: ${failures.join(" | ")}`);
+    const retries = await countForgeLog(cfg, /closed during the edit .* retrying once/);
+    const landed = await countForgeLog(cfg, /the edit had already landed in the document/);
+    const logLines = await countForgeLog(cfg, /./); // sanity: proves the Forge log was actually read
+    assert(logLines > 0, "could not read the Forge output channel log, so the retry count above would mean nothing");
+    return { detail: `10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged ${retries} closed-document retr${retries === 1 ? "y" : "ies"} (${landed} where the edit had already landed and only needed saving); ${logLines} Forge log lines read`, data: { retries, landed, logLines } };
+  },
+};
+
+/** Counts lines of the test instance\'s Forge output channel log that match (the log lives in the temp user-data-dir). */
+async function countForgeLog(cfg: E2eConfig, pattern: RegExp): Promise<number> {
+  if (!cfg.userDataDir) return 0;
+  const { readdir } = await import("node:fs/promises");
+  let count = 0;
+  for (const rel of await readdir(`${cfg.userDataDir}/logs`, { recursive: true })) {
+    if (!String(rel).endsWith("Forge.log")) continue;
+    count += (await readFile(`${cfg.userDataDir}/logs/${String(rel)}`, "utf8")).split("\n").filter((l) => pattern.test(l)).length;
+  }
+  return count;
+}
+
 const noHooksNote = "The forge.e2e.* commands exist only in this run (FORGE_E2E=1); the `nohooks` suite checks the opposite.";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -280,6 +332,6 @@ const brokenOnly: Scenario = {
   },
 };
 
-export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
+export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, rejectHunkLoop, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
 export { noHooksNote, resetWorkspace, sleep };
 export type { ScenarioResult };

@@ -42,10 +42,11 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 | 10 | the Forge panel view resolves and posts its init state; the CodeLens provider returns Accept/Reject lenses for a proposal | hermetic |
 | 3 | after an apply, ONE real `undo` restores the pre-apply text (single undo step) | hermetic (Fake Proposal) |
 | 4 | Undo run restores the files | hermetic (Fake Proposal) |
+| 11 | reject hunk 1, accept the rest, apply, 10 times in a row with the file not open in any editor (the applier race that scenario 6 found) | hermetic (Fake Proposal) |
 | 1 | Task A inline, accept all -> `verify-task-a.sh` PASS | live |
 | 2 | Task A, reject the code hunk -> only the docstring changed | live |
 | 5 | Task B via the panel, accept all -> `verify-task-b.sh` PASS (time, tool and model call counts, tokens recorded) | live |
-| 6 | Task B with one rejected hunk -> the agent is told and the result reported | live (currently failing, see docs/e2e-results.md finding 1) |
+| 6 | Task B with one rejected hunk -> the agent is told and the result reported | live (failed once because of the applier race, now fixed; not re-run live yet, see docs/e2e-results.md finding 1) |
 | 7 | Stop mid-run -> `cancelled`, workspace pristine | live |
 | 8 | Task C: chain [broken-endpoint/broken, deepseek/flash] -> fallback notice, clean before the first apply, Task A PASS | live |
 | 9 | Task C: chain [broken-endpoint/broken] only -> clear error, pristine workspace | live |

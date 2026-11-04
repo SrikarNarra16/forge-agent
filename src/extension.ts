@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const proposalFs = new ProposalFileSystem();
   const reviewUi = new ReviewUi(proposalFs, context.globalState, log);
   const reviewHandler = new ReviewApprovalHandler({
-    editor: new VscodeReviewEditor(host, checkpoints),
+    editor: new VscodeReviewEditor(host, checkpoints, (m) => log.info(m)),
     presenter: reviewUi,
     decisions,
     tracker,

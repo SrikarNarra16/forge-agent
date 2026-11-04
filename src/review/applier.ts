@@ -2,7 +2,8 @@ import { UserModifiedError } from "./checkpoints";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { HostError, type WorkspaceHost } from "../mcp/host";
-import { applyAccepted, type ApplyIo, type ApplyRequest } from "./applyCore";
+import { ConflictError, applyAccepted, type ApplyIo, type ApplyRequest } from "./applyCore";
+import { applyExistingFile, type EditPort } from "./applyRetry";
 import type { CheckpointStore, FileRestorer } from "./checkpoints";
 import { hashText } from "./hash";
 import type { ReviewEditor } from "./reviewHandler";
@@ -18,7 +19,10 @@ function uriOf(root: string, rel: string): vscode.Uri {
 }
 
 export class VscodeApplyIo implements ApplyIo {
-  constructor(private readonly host: WorkspaceHost) {}
+  constructor(
+    private readonly host: WorkspaceHost,
+    private readonly log?: (message: string) => void,
+  ) {}
 
   /** Live text the same way the review read it (open buffer, else disk); undefined when the file is gone. */
   async readLive(rel: string): Promise<string | undefined> {
@@ -33,25 +37,51 @@ export class VscodeApplyIo implements ApplyIo {
   async write(request: ApplyRequest): Promise<void> {
     const root = await this.host.rootPath();
     const uri = uriOf(root, request.path);
-    const edit = new vscode.WorkspaceEdit();
 
     if (request.kind === "create") {
+      const edit = new vscode.WorkspaceEdit();
       edit.createFile(uri, { ignoreIfExists: false });
       edit.insert(uri, new vscode.Position(0, 0), request.newText);
       if (!(await vscode.workspace.applyEdit(edit))) throw new Error(`VS Code could not create ${request.path}`);
-      const created = await vscode.workspace.openTextDocument(uri);
+      const created = await vscode.workspace.openTextDocument(uri); // opened right before its only use
       if (!(await created.save())) throw new Error(`${request.path} was created but could not be saved`);
       return;
     }
 
-    const document = await vscode.workspace.openTextDocument(uri);
-    for (const e of request.edits) {
-      // Original line coordinates; validateRange clamps an end past the last line to the end of the document.
-      edit.replace(uri, document.validateRange(new vscode.Range(e.startLine, 0, e.endLine, 0)), e.text);
-    }
-    if (!(await vscode.workspace.applyEdit(edit))) throw new Error(`VS Code rejected the edit to ${request.path}`);
-    if (!(await document.save())) throw new Error(`${request.path} was changed but could not be saved`);
+    if (request.baseHash === undefined) throw new ConflictError(`${request.path} changed while it was being reviewed`);
+    await applyExistingFile(editPort(uri), { path: request.path, baseHash: request.baseHash, newText: request.newText, edits: request.edits }, (m) => this.log?.(m));
   }
+}
+
+/**
+ * The document operations of an edit. Every call opens the document itself, right before it is used, and keeps no
+ * reference across an await: a document object can be disposed by VS Code at any time (for example when the review's
+ * diff editor closes while the edit is applied), see src/review/applyRetry.ts.
+ */
+function editPort(uri: vscode.Uri): EditPort {
+  return {
+    async readText() {
+      return (await vscode.workspace.openTextDocument(uri)).getText();
+    },
+    async replaceRanges(edits) {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const edit = new vscode.WorkspaceEdit();
+      for (const e of edits) {
+        // Original line coordinates; validateRange clamps an end past the last line to the end of the document.
+        edit.replace(uri, document.validateRange(new vscode.Range(e.startLine, 0, e.endLine, 0)), e.text);
+      }
+      return vscode.workspace.applyEdit(edit); // ONE WorkspaceEdit: a single undo step
+    },
+    async replaceAll(text) {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, document.validateRange(new vscode.Range(0, 0, document.lineCount, 0)), text);
+      return vscode.workspace.applyEdit(edit);
+    },
+    async persist() {
+      return (await vscode.workspace.openTextDocument(uri)).save();
+    },
+  };
 }
 
 /** ReviewEditor over VS Code: reads through the WorkspaceHost, writes through the apply core (verify, checkpoint, write). */
@@ -61,8 +91,9 @@ export class VscodeReviewEditor implements ReviewEditor {
   constructor(
     private readonly host: WorkspaceHost,
     private readonly checkpoints: CheckpointStore,
+    log?: (message: string) => void,
   ) {
-    this.io = new VscodeApplyIo(host);
+    this.io = new VscodeApplyIo(host, log);
   }
 
   rootPath(): Promise<string> {

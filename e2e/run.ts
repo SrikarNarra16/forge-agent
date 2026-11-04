@@ -61,7 +61,7 @@ async function main(): Promise<number> {
 
     const runSuite = async (suite: E2eConfig["suite"], hooks: boolean): Promise<ScenarioResult[]> => {
       const resultFile = join(current.temp, `result-${suite}.json`);
-      const cfg: E2eConfig = { workspace: ws.root, python: ws.python, repoRoot: ROOT, prefix, live, only: process.env["E2E_ONLY"], resultFile, outDir: out, baseUrl: BASE_URL, liveBudgetUsd: LIVE_BUDGET_USD, suite };
+      const cfg: E2eConfig = { workspace: ws.root, python: ws.python, repoRoot: ROOT, prefix, live, only: process.env["E2E_ONLY"], resultFile, outDir: out, baseUrl: BASE_URL, userDataDir: current.userData, liveBudgetUsd: LIVE_BUDGET_USD, suite };
       const cfgFile = join(current.temp, `config-${suite}.json`);
       await writeFile(cfgFile, JSON.stringify(cfg), "utf8");
       const testEnv: Record<string, string> = { E2E_CONFIG: cfgFile, FORGE_RESOURCE_PREFIX: prefix };
