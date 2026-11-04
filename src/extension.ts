@@ -4,7 +4,8 @@ import { CommandTickets } from "./mcp/commandTickets";
 import { RunRegistry } from "./trueforge/runRegistry";
 import { RunSideEffects } from "./trueforge/sideEffects";
 import { promoteModel } from "./trueforge/modelChain";
-import { sessionUrl } from "./trueforge/client";
+import { CommandPrefixResolver } from "./host/commandPrefix";
+import { sessionUrl, trueForgeLink } from "./trueforge/client";
 import { E2eRecorder, registerE2eHooks } from "./e2e/hooks";
 import { ChainToasts } from "./ui/chainToasts";
 import { VscodeEditorUi } from "./host/editorUi";
@@ -97,7 +98,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // every command that starts counts as a side effect for the model chain (it may have changed anything)
   const terminal = { started: (c: string) => (sideEffects.recordCommand(c), terminalOutput.started(c)), output: (c: string) => terminalOutput.output(c), finished: (r: Parameters<TerminalOutput["finished"]>[0]) => terminalOutput.finished(r) };
   context.subscriptions.push(terminalOutput);
-  const commands = new NodeCommandRunner({ getPrefix: () => vscode.workspace.getConfiguration("forge").get<string>("commandPrefix", "") });
+  // forge.commandPrefix wins; when empty and the workspace has .venv/bin/activate (or venv/), commands run after `source <dir>/bin/activate &&`.
+  const prefixResolver = new CommandPrefixResolver(host, () => vscode.workspace.getConfiguration("forge").get<string>("commandPrefix", ""));
+  const commands = new NodeCommandRunner({ getPrefix: () => prefixResolver.effective().prefix });
   const mcp = startMcpServer({ token, host, events, decisions, index: contextService.index, commands, terminal, editor: new VscodeEditorUi(host), run: { isCancelled: () => registry.isCancelled(), signal: () => registry.signal }, tickets, log: (m) => log.info(m) });
   mcpStarting = mcp;
   mcp.catch((err: unknown) => log.error("MCP server failed to start", err));
@@ -179,6 +182,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const sendWithContext = async (text: string, chips: ReadonlyArray<{ kind: "file" | "symbol"; value: string }>): Promise<void> => {
     if (controller.runState.busy || preparing) return;
     preparing = true;
+    await prefixResolver.refresh().catch(() => undefined); // a venv created since the last run is picked up now
     let turn: Awaited<ReturnType<typeof buildTurnContext>>;
     try {
       const budget = vscode.workspace.getConfiguration("forge").get<number>("contextBudgetTokens", 6000);
@@ -210,8 +214,21 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     openReview: (callId) => void reviewUi.open(callId),
     undoRun: () => void undoLastRun(),
+    // The panel buttons run the SAME commands as Cmd+Enter and the CodeLens: no second write path.
+    applyReview: (callId) => void vscode.commands.executeCommand("forge.reviewApply", callId),
+    rejectReview: (callId) => void vscode.commands.executeCommand("forge.reviewRejectAll", callId),
+    openTrueForge: () => void vscode.env.openExternal(vscode.Uri.parse(trueForgeLink(status.baseUrl, controller.sessionId))),
   });
   context.subscriptions.push({ dispose: events.onContextRead((e) => panel.noteContextRead(e)) });
+  // The effective command prefix is always visible in the panel's Context section.
+  const showPrefix = (): void => panel.setCommandPrefix(prefixResolver.effective());
+  context.subscriptions.push(
+    { dispose: prefixResolver.onChange(showPrefix) },
+    vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration("forge.commandPrefix") && prefixResolver.notify()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => void prefixResolver.refresh()),
+  );
+  showPrefix();
+  void prefixResolver.refresh().then(showPrefix, () => undefined);
   context.subscriptions.push(
     panel,
     vscode.window.registerWebviewViewProvider(AgentViewProvider.viewType, new AgentViewProvider(context.extensionUri, panel)),

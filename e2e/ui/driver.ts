@@ -113,15 +113,17 @@ export const statusText = async (frame: Frame): Promise<string> => ((await frame
 export interface DriveLog {
   commandsAllowed: number;
   reviewsApplied: number;
+  /** How many of those were applied with the panel's "Apply accepted" button (the rest with Cmd/Ctrl+Enter, the fallback). */
+  appliedWithPanelButton: number;
   lensSeen: boolean;
 }
 
 /**
  * Drives a run to its end with real clicks: Allow on command cards, "Review diff" on each queue entry, then the
- * CodeLens "Accept all" and Cmd+Enter in the diff. Returns when the panel says Done / Error / Stopped.
+ * CodeLens "Accept all" in the diff and the panel's "Apply accepted" button (Cmd+Enter only as a fallback). Returns when the panel says Done / Error / Stopped.
  */
 export async function drive(page: Page, frame: Frame, screens: Screens, options: { timeoutMs: number; prefix?: string }): Promise<DriveLog> {
-  const log: DriveLog = { commandsAllowed: 0, reviewsApplied: 0, lensSeen: false };
+  const log: DriveLog = { commandsAllowed: 0, reviewsApplied: 0, appliedWithPanelButton: 0, lensSeen: false };
   const deadline = Date.now() + options.timeoutMs;
   let shotCommand = false;
   while (Date.now() < deadline) {
@@ -152,7 +154,10 @@ export async function drive(page: Page, frame: Frame, screens: Screens, options:
       await page.keyboard.press(`${MOD}+ArrowUp`);
       const acceptAll = page.locator('a[role="button"]', { hasText: /^Accept all$/ }).locator("visible=true").first();
       await acceptAll.click({ timeout: 15_000 });
-      await page.keyboard.press(`${MOD}+Enter`); // forge.reviewApply
+      // Apply with the panel's own button (the same command as Cmd/Ctrl+Enter); the keyboard stays as a fallback
+      const applyButton = frame.getByRole("button", { name: "Apply accepted" }).locator("visible=true").first();
+      if (await applyButton.click({ timeout: 8_000 }).then(() => true, () => false)) log.appliedWithPanelButton++;
+      else await page.keyboard.press(`${MOD}+Enter`); // forge.reviewApply
       log.reviewsApplied++;
       await until("the review to finish", async () => (await frame.locator(".queue-row.state-reviewing").count()) === 0 || (await statusText(frame)) !== "Waiting for your approval", 30_000, 200).catch(() => undefined);
       continue;

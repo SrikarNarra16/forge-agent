@@ -207,7 +207,7 @@
         "forge.commandPrefix": {
           "type": "string",
           "default": "",
-          "description": "Shell prefix run before every command the agent runs, e.g. 'source .venv/bin/activate &&' so pytest finds your virtual environment."
+          "description": "Shell prefix run before every command the agent runs, e.g. 'source .venv/bin/activate &&' so pytest finds your virtual environment. Leave empty to auto-detect: if the workspace has .venv/bin/activate (else venv/bin/activate) Forge uses 'source <that>/bin/activate &&'. A value set here always wins; use 'true &&' to run commands with no activation. The effective prefix is shown in the panel's Context section. Windows-style environments (Scripts\\activate) are not auto-detected: commands run through a POSIX shell, so set this yourself."
         },
         "forge.rollbackOnCancel": {
           "type": "boolean",
@@ -250,6 +250,7 @@
     "eval": "tsx scripts/eval/run.ts",
     "test:e2e": "tsx e2e/run.ts",
     "test:ui": "tsx e2e/ui/run.ts b",
+    "test:ui:panel": "tsx e2e/ui/panel.ts",
     "e2e:rehearsal": "tsx e2e/ui/run.ts rehearsal"
   },
   "dependencies": {

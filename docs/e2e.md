@@ -7,6 +7,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 | 1 | `npm run test:e2e` | the extension host (VS Code API, real commands, real review UI, real applier) | no (hermetic set) |
 | 1 live | `E2E_LIVE=1 npm run test:e2e` | the same, plus the three fixed tasks with a real model | yes (about $0.11 per pass) |
 | 2 | `npm run test:ui` | the workbench UI with Playwright: Task B through the Forge panel with real clicks | yes (about $0.08) |
+| 2 hermetic | `npm run test:ui:panel` | the panel's review controls, command-prefix line and Open in TrueForge button, with real clicks on Fake Proposal | no (and no TrueForge: the extension is pointed at a dead port) |
 | 2 | `npm run e2e:rehearsal` | Tasks A, B, C in order, with 1080p video and screenshots | yes (about $0.09-0.12) |
 
 ## Prerequisites
@@ -43,6 +44,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 | 3 | after an apply, ONE real `undo` restores the pre-apply text (single undo step) | hermetic (Fake Proposal) |
 | 4 | Undo run restores the files | hermetic (Fake Proposal) |
 | 11 | reject hunk 1, accept the rest, apply, 10 times in a row with the file not open in any editor (the applier race that scenario 6 found) | hermetic (Fake Proposal) |
+| 12 | the panel buttons: "Apply accepted" with 2 of 3 hunks (1 undecided) writes 2, a double click applies once, ONE undo restores; "Reject all" writes nothing; a stale click is ignored | hermetic (Fake Proposal) |
 | 1 | Task A inline, accept all -> `verify-task-a.sh` PASS | live |
 | 2 | Task A, reject the code hunk -> only the docstring changed | live |
 | 5 | Task B via the panel, accept all -> `verify-task-b.sh` PASS (time, tool and model call counts, tokens recorded) | live |
@@ -54,7 +56,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 Scenarios 7 and 9 have no model-free variant: that would need a fake TrueForge server, which was kept out of scope (the plan said not to build a TrueForge clone). Each scenario has a hard time limit, so a hung command cannot hang the run. Between scenarios the temp workspace is reset with `git checkout` after reverting unsaved buffers.
 
 ## Layer 2 (Playwright) steps
-Automated with real clicks and keystrokes, no test hooks: open the Forge view (command palette), find the webview by traversing the nested iframes (the one containing the composer textarea), type the Task B prompt and press Enter, wait for streamed text, click **Allow** on every `run_command` card, click each **Review diff** queue entry, assert the text **"Accept hunk"** is visible in the diff editor (CodeLens), jump to the top of the proposal and click the **Accept all** lens, press **Cmd+Enter** (apply), wait for the panel to say Done, run `verify-task-b.sh`. Rehearsal Task A: Quick Open `src/flask/helpers.py:<line>`, keyboard selection of `get_debug_flag`, **Cmd+Alt+K**, type the instruction. Rehearsal Task C: the temp profile's `forge.models` is rewritten to [broken, flash], the notice "switched to deepseek/flash" is awaited in the panel, `git status` is checked before the first apply.
+Automated with real clicks and keystrokes, no test hooks: open the Forge view (command palette), find the webview by traversing the nested iframes (the one containing the composer textarea), type the Task B prompt and press Enter, wait for streamed text, click **Allow** on every `run_command` card, click each **Review diff** queue entry, assert the text **"Accept hunk"** is visible in the diff editor (CodeLens), jump to the top of the proposal and click the **Accept all** lens, click **Apply accepted** in the panel (Cmd+Enter only as a fallback; the log says how many reviews used the button), wait for the panel to say Done, run `verify-task-b.sh`. Rehearsal Task A: Quick Open `src/flask/helpers.py:<line>`, keyboard selection of `get_debug_flag`, **Cmd+Alt+K**, type the instruction. Rehearsal Task C: the temp profile's `forge.models` is rewritten to [broken, flash], the notice "switched to deepseek/flash" is awaited in the panel, `git status` is checked before the first apply.
 Artifacts: `e2e-output/screens/NN-name.png` at each key moment (cleared at the start of each run) and `e2e-output/video/ui-<mode>-<timestamp>.webm` at 1920x1080 (Playwright's screencast recorder).
 
 ## Known limits
@@ -64,3 +66,6 @@ Artifacts: `e2e-output/screens/NN-name.png` at each key moment (cleared at the s
 - Playwright video requires its ffmpeg build (see Prerequisites); VS Code opens its window on the primary display, so keep the machine awake and the screen unlocked during a rehearsal.
 - The Layer 2 token spend is an estimate (about 1.0-1.1M tokens per run); the exact tokens are not read back from the UI.
 - Two VS Code windows can now run side by side against one TrueForge: give each a different `forge.resourcePrefix` (or `FORGE_RESOURCE_PREFIX`) and reload the window. The e2e runner does this automatically.
+
+## Panel controls smoke (`npm run test:ui:panel`, hermetic)
+Real clicks in the real workbench, no model, no TrueForge (`forge.trueforge.baseUrl` points at a port nobody listens on, so no TrueForge resource is created or touched). The temp clone gets a `.venv/bin/activate` and no explicit `forge.commandPrefix`, so the Context section must say the venv was auto-detected. Then: Fake Proposal -> card says "0 of 3 hunks accepted, 3 undecided" and Apply is disabled -> CodeLens "Accept hunk" -> "1 of 3 hunks accepted, 2 undecided" + the note that undecided hunks are not applied -> click **Apply accepted** in the panel -> "Applied 1 of 3 hunks; 2 not applied (rejected or undecided)." and exactly one edit on disk -> Fake Proposal again -> click **Reject all** -> "Rejected: nothing was written.". "Open in TrueForge" is checked for presence only; it is never clicked because it would open your browser. Why only one hunk is accepted through the lens: the other hunks are far down the file and their lenses are out of view in the collapsed diff; 2 of 3 is covered by Layer 1 scenario 12, which drives the panel's own message handler.

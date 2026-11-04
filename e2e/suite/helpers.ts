@@ -11,7 +11,7 @@ export interface E2eState {
   stateHistory: string[];
   statusLine: { state: string; model?: string; detail?: string };
   items: Array<Record<string, unknown> & { kind: string; id: string }>;
-  review: Array<{ callId: string; path: string; state: string; hunks?: number; applied?: number; detail?: string }>;
+  review: Array<{ callId: string; path: string; state: string; hunks?: number; applied?: number; accepted?: number; rejected?: number; detail?: string }>;
   context: { plan?: { items: unknown[]; usedTokens: number; budgetTokens: number; note?: string }; reads: unknown[]; modelInputTokens?: number };
   chainNotice?: string;
   chainEvents: Array<{ kind: string; text: string; afterMs?: number }>;

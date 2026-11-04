@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { readFile } from "node:fs/promises";
 import type { E2eConfig, ScenarioResult } from "../common";
+import { reviewStatusLine, reviewUndecidedNote } from "../../src/ui/webview/format";
 import { TASK_A_INSTRUCTION, TASK_B_PROMPT, dirty, getDebugFlagRange, openFile, resetWorkspace, sleep, state, verifyTaskA, verifyTaskB, waitFor, waitIdle, type E2eState } from "./helpers";
 
 export interface ScenarioOutcome {
@@ -154,6 +155,75 @@ const rejectHunkLoop: Scenario = {
     const logLines = await countForgeLog(cfg, /./); // sanity: proves the Forge log was actually read
     assert(logLines > 0, "could not read the Forge output channel log, so the retry count above would mean nothing");
     return { detail: `10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged ${retries} closed-document retr${retries === 1 ? "y" : "ies"} (${landed} where the edit had already landed and only needed saving); ${logLines} Forge log lines read`, data: { retries, landed, logLines } };
+  },
+};
+
+/** The panel's review buttons: the message the webview posts on a click goes through the real handler to forge.reviewApply / forge.reviewRejectAll. No model. */
+const panelButtons: Scenario = {
+  id: "12",
+  name: "Panel buttons: 'Apply accepted' with 2 of 3 hunks (1 undecided) writes 2, one undo restores; 'Reject all' writes nothing",
+  live: false,
+  async run(cfg) {
+    const file = `${cfg.workspace}/src/flask/helpers.py`;
+    const click = (message: unknown): Thenable<unknown> => vscode.commands.executeCommand("forge.e2e.panelMessage", { message });
+    const lastReview = async (): Promise<E2eState["review"][number]> => {
+      const r = (await state()).review.at(-1);
+      assert(r, "no review in the queue");
+      return r;
+    };
+    await resetWorkspace(cfg);
+    const editor = await openFile(cfg, "src/flask/helpers.py");
+    const before = editor.document.getText();
+
+    // --- Apply accepted: hunks 2 and 3 accepted through the real commands, hunk 1 left undecided ---
+    await startFakeProposal(cfg);
+    const review = await lastReview();
+    for (const id of [1, 2]) await vscode.commands.executeCommand("forge.reviewAcceptHunk", review.callId, id);
+    const shown = await waitFor("the panel to show 2 accepted hunks", async () => {
+      const r = await lastReview();
+      return r.accepted === 2 ? r : undefined;
+    }, 10_000, 50);
+    const line = reviewStatusLine(shown);
+    assert(line === "2 of 3 hunks accepted, 1 undecided", `status line was "${line}"`);
+    assert(reviewUndecidedNote(shown).includes("will not be applied"), "the card does not say undecided hunks are not applied");
+
+    await click({ type: "reviewApply", callId: review.callId });
+    await click({ type: "reviewApply", callId: review.callId }); // a double click must not apply twice or throw
+    const done = await waitFor("the review to be applied", async () => {
+      const r = await lastReview();
+      return ["applied", "rejected", "failed", "cancelled"].includes(r.state) ? r : undefined;
+    }, 20_000, 50);
+    assert(done.state === "applied" && done.applied === 2 && done.hunks === 3, `expected applied 2 of 3, got ${done.state} ${done.applied ?? "?"} of ${done.hunks ?? "?"}${done.detail ? ` (${done.detail})` : ""}`);
+    const text = await readFile(file, "utf8");
+    const marks = [1, 2, 3].filter((n) => text.includes(`forge fake proposal ${n}`));
+    assert(marks.join(",") === "2,3", `expected the edits of hunks 2 and 3 on disk and hunk 1 absent, found marks: ${marks.join(",") || "none"}`);
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+    assert(!doc.isDirty, "the document is dirty after the apply (not saved)");
+    await vscode.window.showTextDocument(doc);
+    await vscode.commands.executeCommand("undo"); // ONE undo
+    const afterUndo = vscode.window.activeTextEditor?.document.getText() ?? doc.getText();
+    assert(afterUndo === before, "one undo after the panel's Apply did not restore the pre-apply text (the button must use the single-undo-step path)");
+    await vscode.commands.executeCommand("workbench.action.files.revert"); // drop the unsaved undo result; the disk is checked next
+    await resetWorkspace(cfg);
+
+    // --- Reject all: nothing is written ---
+    const countBefore = (await state()).review.length;
+    await startFakeProposal(cfg);
+    const second = await waitFor("a second review", async () => {
+      const st = await state();
+      return st.review.length > countBefore ? st.review.at(-1) : undefined;
+    }, 10_000, 50);
+    await click({ type: "reviewRejectAll", callId: second.callId });
+    const rejected = await waitFor("the review to be rejected", async () => {
+      const r = await lastReview();
+      return r.callId === second.callId && r.state !== "reviewing" && r.state !== "queued" ? r : undefined;
+    }, 10_000, 50);
+    assert(rejected.state === "rejected", `expected rejected, got ${rejected.state}`);
+    assert((await dirty(cfg)) === "", "files changed on disk after Reject all");
+    // a stale click on a finished review does nothing
+    await click({ type: "reviewApply", callId: second.callId });
+    assert((await dirty(cfg)) === "", "a stale Apply click changed a file");
+    return { detail: 'Apply accepted: "2 of 3 hunks accepted, 1 undecided", 2 hunks on disk (hunk 1 absent), a double click applied once, ONE undo restored the exact text; Reject all: state rejected, git clean, a stale Apply click ignored' };
   },
 };
 
@@ -332,6 +402,6 @@ const brokenOnly: Scenario = {
   },
 };
 
-export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, rejectHunkLoop, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
+export const SCENARIOS: Scenario[] = [panelAndLenses, singleUndo, undoRun, rejectHunkLoop, panelButtons, taskAInline, taskAPartial, taskBPanel, taskBRejected, stopMidRun, fallback, brokenOnly];
 export { noHooksNote, resetWorkspace, sleep };
 export type { ScenarioResult };

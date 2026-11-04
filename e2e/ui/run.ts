@@ -79,7 +79,7 @@ async function taskB(l: Launched, env: E2eEnvironment, screens: Screens, results
   const log = await drive(l.page, frame, screens, { timeoutMs: 600_000 });
   await screens.shot(l.page, "B-done");
   const v = await verify("task-b", env);
-  results.push({ step: "Task B (panel)", ok: v.pass && log.lensSeen, detail: `${log.commandsAllowed} command card(s) allowed, ${log.reviewsApplied} review(s) applied via lenses + ${MOD}+Enter, CodeLens text seen: ${log.lensSeen}; verify-task-b ${v.pass ? "PASS" : `FAIL\n${v.out.slice(-600)}`}`, seconds: (Date.now() - t0) / 1000 });
+  results.push({ step: "Task B (panel)", ok: v.pass && log.lensSeen, detail: `${log.commandsAllowed} command card(s) allowed, ${log.reviewsApplied} review(s) applied (${log.appliedWithPanelButton} with the panel's "Apply accepted" button, the rest with ${MOD}+Enter), CodeLens text seen: ${log.lensSeen}; verify-task-b ${v.pass ? "PASS" : `FAIL\n${v.out.slice(-600)}`}`, seconds: (Date.now() - t0) / 1000 });
 }
 
 async function main(): Promise<number> {
@@ -111,7 +111,7 @@ async function main(): Promise<number> {
       await inlineTaskA(l.page, env, frame, screens, "A");
       const logA = await drive(l.page, frame, screens, { timeoutMs: 180_000 });
       const vA = await verify("task-a", env);
-      results.push({ step: "Task A (inline)", ok: vA.pass && logA.lensSeen, detail: `${logA.reviewsApplied} review(s) applied; verify-task-a ${vA.pass ? "PASS" : `FAIL\n${vA.out.slice(-500)}`}`, seconds: (Date.now() - t0) / 1000 });
+      results.push({ step: "Task A (inline)", ok: vA.pass && logA.lensSeen, detail: `${logA.reviewsApplied} review(s) applied (${logA.appliedWithPanelButton} with the panel button); verify-task-a ${vA.pass ? "PASS" : `FAIL\n${vA.out.slice(-500)}`}`, seconds: (Date.now() - t0) / 1000 });
       await screens.shot(l.page, "A-done");
       await resetWorkspace(env);
 

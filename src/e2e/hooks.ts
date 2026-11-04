@@ -180,6 +180,11 @@ export function registerE2eHooks(deps: E2eDeps): vscode.Disposable[] {
       await deps.inline.runWith(args.instruction);
       return { started: true };
     }),
+    // Delivers a message exactly as the webview would post it (e.g. the "Apply accepted" / "Reject all" buttons). Validated by the panel.
+    vscode.commands.registerCommand("forge.e2e.panelMessage", (args?: { message?: unknown }) => {
+      panel.receive(args?.message);
+      return { delivered: true };
+    }),
     vscode.commands.registerCommand("forge.e2e.state", state),
     vscode.commands.registerCommand("forge.e2e.decide", (args?: { policy?: unknown }) => {
       policy = policyFrom(args?.policy);
