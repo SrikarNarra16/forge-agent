@@ -155,3 +155,9 @@ Scenario 6 failed twice in that pass. The first failure was a bug in the test (i
 | PASS | Accept all and apply | "Applied 3 of 3 hunks."; 3 new edits on disk |
 | PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
 
+## 2026-11-04 11:24 (UI layer, rehearsal A+B+C, Playwright)
+
+| Result | Step | Time | Detail |
+|---|---|---|---|
+| FAIL | UI flow | 0 s | stopped: locator.waitFor: Timeout 30000ms exceeded. Call log:   - waiting for getByText('Accept hunk').first() to be visible  |
+
