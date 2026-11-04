@@ -42,4 +42,11 @@ export interface ContextViewState {
   modelInputTokens?: number;
   /** Open the section (first turn of a run). */
   expand: boolean;
+  /** The shell prefix commands run with, and where it comes from (forge.commandPrefix, auto-detected venv, or none). */
+  run?: ContextViewRun;
+}
+
+export interface ContextViewRun {
+  prefix: string;
+  source: "setting" | "auto" | "none";
 }

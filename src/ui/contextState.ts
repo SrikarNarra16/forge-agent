@@ -1,5 +1,5 @@
 import type { ContextReadEvent } from "../mcp/events";
-import type { ContextViewPlan, ContextViewState } from "../context/view";
+import type { ContextViewPlan, ContextViewRun, ContextViewState } from "../context/view";
 
 /** Holds what the Context section shows and produces the snapshot the webview renders. Pure and vscode-free. */
 export class ContextPanelState {
@@ -7,6 +7,12 @@ export class ContextPanelState {
   private reads: ContextViewState["reads"] = [];
   private modelInputTokens: number | undefined;
   private expand = false;
+  private run: ContextViewRun | undefined;
+
+  /** The command prefix in effect; it survives `clear()` (it describes the workspace, not a chat). */
+  setRun(run: ContextViewRun): void {
+    this.run = run;
+  }
 
   /** A new run starts: the plan of the latest turn replaces the old one, reads accumulate, the section opens. */
   beginRun(plan: ContextViewPlan | undefined): void {
@@ -45,6 +51,7 @@ export class ContextPanelState {
       reads: this.reads,
       ...(this.modelInputTokens !== undefined ? { modelInputTokens: this.modelInputTokens } : {}),
       expand: this.expand,
+      ...(this.run ? { run: this.run } : {}),
     };
   }
 }

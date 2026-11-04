@@ -1,4 +1,4 @@
-import type { ContextViewItem, ContextViewPlan, ContextViewRead, ContextViewState } from "../protocol";
+import type { ContextViewItem, ContextViewPlan, ContextViewRead, ContextViewRun, ContextViewState } from "../protocol";
 
 /** Pure view-model helpers for the Context section (kept DOM-free so they are unit-tested). */
 
@@ -41,7 +41,22 @@ export function contextSummary(state: ContextViewState): string {
   if (g.auto.length > 0) parts.push(`${g.auto.length} auto`);
   if (g.reads.length > 0) parts.push(`${g.reads.length} read`);
   if (state.plan?.note) parts.push("no auto context");
+  if (state.run?.source === "auto") parts.push("venv auto-activated");
+  else if (state.run?.source === "setting") parts.push("custom command prefix");
   return parts.length > 0 ? parts.join(" · ") : "nothing yet";
 }
 
-export const hasContext = (state: ContextViewState): boolean => state.plan !== undefined || state.reads.length > 0;
+/** The panel always has something to show once the command prefix is known (it is never hidden). */
+export const hasContext = (state: ContextViewState): boolean => state.plan !== undefined || state.reads.length > 0 || state.run !== undefined;
+
+/** "Commands run with `source .venv/bin/activate &&` (auto-detected virtual environment)". */
+export function runPrefixLabel(run: ContextViewRun): { text: string; hint: string } {
+  switch (run.source) {
+    case "setting":
+      return { text: `Commands run with: ${run.prefix}`, hint: "from the forge.commandPrefix setting" };
+    case "auto":
+      return { text: `Commands run with: ${run.prefix}`, hint: "auto-detected virtual environment; set forge.commandPrefix to override (or to \"true &&\" to turn it off)" };
+    case "none":
+      return { text: "Commands run without a prefix", hint: "no virtual environment found (.venv or venv); set forge.commandPrefix to activate one" };
+  }
+}

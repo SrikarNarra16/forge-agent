@@ -1,5 +1,5 @@
 import type { ContextViewItem, ContextViewRead, ContextViewState } from "../protocol";
-import { budgetLabel, budgetPercent, contextSummary, formatCount, groupContext, locationLabel, retrievalLabel } from "./contextModel";
+import { budgetLabel, budgetPercent, contextSummary, formatCount, groupContext, locationLabel, retrievalLabel, runPrefixLabel } from "./contextModel";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -61,6 +61,15 @@ export function renderContext(state: ContextViewState, previous?: HTMLElement): 
     for (const warning of plan.warnings) details.appendChild(el("div", "ctx-warning", warning));
   } else if (state.modelInputTokens !== undefined) {
     details.appendChild(el("div", "ctx-facts", `model input tokens: ${formatCount(state.modelInputTokens)}`));
+  }
+
+  if (state.run) {
+    const label = runPrefixLabel(state.run);
+    const box = el("div", "ctx-group ctx-run");
+    box.appendChild(el("div", "ctx-group-title", "Run"));
+    box.appendChild(el("div", "ctx-prefix", label.text));
+    box.appendChild(el("div", "ctx-reason", label.hint));
+    details.appendChild(box);
   }
 
   const g = groupContext(state);
