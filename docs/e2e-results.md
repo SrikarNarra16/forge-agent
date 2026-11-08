@@ -148,3 +148,45 @@ Spend of this run: counted from TrueForge session records (1 session(s), 11 turn
 | 13 | PASS | hermetic | 0.7 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
 | 14 | PASS | hermetic | 38.5 s | CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s | 30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished |
 
+## 2026-11-08 05:27 (UI layer, rehearsal A+B+C, Playwright)
+
+| Result | Step | Time | Detail |
+|---|---|---|---|
+| PASS | Task A (inline) | 6 s | 1 review(s) applied (1 with the panel button); verify-task-a: RESULT: PASS (19/19 checks) |
+| PASS | Task B (panel) | 115 s | 4 command card(s) allowed, 5 review(s) applied (5 with the panel's "Apply accepted" button, the rest with Meta+Enter), CodeLens text seen: true; verify-task-b: RESULT: PASS (7/7 checks) |
+| PASS | Task C (fallback) | 6 s | fallback notice shown; workspace pristine before the first apply; 1 review(s) applied; verify-task-a: RESULT: PASS (19/19 checks) |
+
+| Task | Instruction -> first diff | First diff -> verified | (of which verify script) | Instruction -> verified | Model calls | Tool calls | Tokens | Commands auto-allowed | Allow clicks | Diff reopened (lens retry) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Task A | 3.4 s | 1.4 s | 0.1 s | 4.9 s | 2 | 1 | 6,363 | 0 | 0 | 0 |
+| Task B | 29.9 s | 84.9 s | 1.1 s | 114.8 s | 23 | 34 | 487,623 | 0 | 4 | 0 |
+| Task C | 3.8 s | 1.5 s | 0.1 s | 5.3 s | 3 | 2 | 9,607 | 0 | 0 | 0 |
+| **A+B+C** | **37.1 s** | **87.9 s** | 1.4 s | **125.0 s** | 28 | 37 | 503,593 | 0 | 4 | 0 |
+
+Commands (no-pipes rule unchanged):
+- Task A (inline): 0 run_command call(s): 0 auto-allowed, 0 asked (n/a)
+- Task B (panel): 4 run_command call(s): 0 auto-allowed, 4 asked (100%) - why they asked: 4 x pipe or redirect (e.g. `2>&1 | tail`)
+- Task C (fallback): 0 run_command call(s): 0 auto-allowed, 0 asked (n/a)
+
+Spend of this run: counted from TrueForge session records (3 session(s), 12 turn(s)): 503,593 tokens = $0.04 at $0.08 per million tokens. Auto-allow switches: off.
+
+Videos (automated backup take, no narration):
+- e2e-output/video/backup-take-rehearsal-2026-11-08-05-27-00.webm: 2:09.3 (129.3 s)
+- e2e-output/video/backup-take-closing-sessions-2026-11-08-05-27-00.webm: 0:20.8 (20.8 s)
+
+Correction to the closing clip: the first version of this clip (15.6 s, written by the run itself) reported "deferred-loading steps NOT found" although this Task B session did load the deferred tools (`list_tools`, `get_tool_info`, `call_tool` in its final turn, per TrueForge's events). The Sessions page renders the final turn's "Agent steps" group collapsed, and my script did not open it. The script was fixed (scroll the detail pane to the bottom, then open the last "Agent steps" group) and the clip was re-recorded for the same session without any model call; the file above is the re-recorded one (deferred-loading steps shown, 7 approval pauses). Spend of the run is unchanged (the re-recording makes no model call).
+This take on VS Code 1.145.0 and TrueForge 0.183.1 (restarted, pinned).
+
+## 2026-11-08 05:32 (hermetic run, pid 93112)
+
+| # | Result | Kind | Time | Scenario | Detail |
+|---|---|---|---|---|---|
+| 0 | PASS | hermetic | 0.0 s | Normal activation (no FORGE_E2E) registers no forge.e2e.* command | 24 forge.* commands, none of them forge.e2e.* |
+| 10 | PASS | hermetic | 0.3 s | Forge panel view resolves and posts its init state; CodeLens provider returns Accept/Reject lenses | panel resolved (ready x1); 9 lenses: Accept all, Reject all, Apply (0 of 3 accepted) ▸, ✓ Accept hunk, ✗ Reject hunk |
+| 3 | PASS | hermetic | 0.3 s | After an apply, ONE real `undo` restores the pre-apply text (single undo step) | one undo restored the exact pre-apply text (3 hunks applied as one undo step) |
+| 4 | PASS | hermetic | 0.4 s | Undo run restores the files (Fake Proposal) | git status clean after Undo run |
+| 11 | PASS | hermetic | 3.3 s | Reject hunk 1, accept the rest, apply: 10 times in a row with the file not open in any editor (no model) | 10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged 0 closed-document retries (0 where the edit had already landed and only needed saving); 38 Forge log lines read |
+| 12 | PASS | hermetic | 0.6 s | Panel buttons: 'Apply accepted' with 2 of 3 hunks (1 undecided) writes 2, one undo restores; 'Reject all' writes nothing | Apply accepted: "2 of 3 hunks accepted, 1 undecided", 2 hunks on disk (hunk 1 absent), a double click applied once, ONE undo restored the exact text; Reject all: state rejected, git clean, a stale Apply click ignored |
+| 13 | PASS | hermetic | 0.8 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
+| 14 | PASS | hermetic | 38.5 s | CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s | 30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished |
+

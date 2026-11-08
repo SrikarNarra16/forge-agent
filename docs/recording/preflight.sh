@@ -183,7 +183,17 @@ if [ -n "$FREE_KB" ]; then
   FREE_GB=$((FREE_KB / 1024 / 1024))
   if [ "$FREE_GB" -ge 10 ]; then ok "disk space" "${FREE_GB} GB free"; elif [ "$FREE_GB" -ge 3 ]; then warn "disk space" "${FREE_GB} GB free (a 4-minute 1080p recording needs about 1 GB)"; else bad "disk space" "only ${FREE_GB} GB free"; fi
 fi
-if command -v ffprobe >/dev/null 2>&1; then ok "ffprobe" "available (to check the video duration)"; else warn "ffprobe" "not installed: you cannot check the exported duration (brew install ffmpeg)"; fi
+# the exported video's duration must be checkable: ffprobe if installed, else macOS Spotlight (`mdls`), which reads .mp4 / .mov
+if command -v ffprobe >/dev/null 2>&1; then
+  ok "video duration check" "ffprobe is available"
+else
+  MDLS_SAMPLE="/System/Library/Sounds/Blow.aiff"
+  MDLS_OUT="$(command -v mdls >/dev/null 2>&1 && [ -f "$MDLS_SAMPLE" ] && mdls -name kMDItemDurationSeconds -raw "$MDLS_SAMPLE" 2>/dev/null)"
+  case "$MDLS_OUT" in
+    [0-9]*) ok "video duration check" "ffprobe is not installed; mdls works instead: mdls -name kMDItemDurationSeconds -raw <file.mp4> (checked on a system sound: ${MDLS_OUT%%.*} s)" ;;
+    *) warn "video duration check" "neither ffprobe nor mdls can read durations here: use QuickTime (Cmd+I shows the duration) or brew install ffmpeg" ;;
+  esac
+fi
 PY3="$(command -v python3 || true)"; if [ -n "$PY3" ]; then ok "python3" "$("$PY3" --version 2>&1)"; fi
 
 # ---------------------------------------------------------------------------------------------------------------

@@ -41,13 +41,14 @@ QuickTime and Cmd+Shift+5 save a `.mov`. Convert to MP4/H.264 at 1080p with ffmp
 ffmpeg -i take.mov -vf "scale=1920:1080:flags=lanczos" -c:v libx264 -preset slow -crf 20 -pix_fmt yuv420p \
        -c:a aac -b:a 128k -movflags +faststart forge-demo.mp4
 ```
-Check the result:
+Check the result (nothing here needs ffmpeg except the first line; use the `mdls` line if ffprobe is not installed):
 ```bash
+mdls -name kMDItemDurationSeconds -raw forge-demo.mp4; echo                             # macOS Spotlight, no install needed; seconds, must be < 240
 ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 forge-demo.mp4     # seconds, must be < 240
 ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=p=0 forge-demo.mp4   # h264,1920,1080
 ls -lh forge-demo.mp4
 ```
-If `brew install ffmpeg` fails with "directories are not writable", Homebrew belongs to another macOS user: run the install as that user, or fix the ownership yourself (`sudo chown -R "$(whoami)" /opt/homebrew`), or download a static build of ffmpeg. Without ffmpeg: QuickTime -> File -> Export As -> 1080p gives an H.264 `.mov`, which YouTube accepts; the duration is shown in QuickTime's title bar / Movie Inspector (Cmd+I).
+If `brew install ffmpeg` fails with "directories are not writable", Homebrew belongs to another macOS user: run the install as that user, or fix the ownership yourself (`sudo chown -R "$(whoami)" /opt/homebrew`), or download a static build of ffmpeg. `mdls` prints `(null)` for a file Spotlight has not indexed yet (just exported, or inside a folder Spotlight skips): run `mdimport forge-demo.mp4` and ask again, or move the file to your Desktop. It reads `.mp4` and `.mov` but NOT `.webm` (the recordings of the automated take): for those use `npm run video:duration -- <file>` (headless Chrome). Without ffmpeg: QuickTime -> File -> Export As -> 1080p gives an H.264 `.mov`, which YouTube accepts; the duration is shown in QuickTime's title bar / Movie Inspector (Cmd+I).
 
 **Trimming.** Cut only the dead time you are allowed to cut (shot list column "Cut?"): QuickTime -> Edit -> Trim (Cmd+T), or `ffmpeg -ss 00:00:05 -to 00:03:50 -i in.mp4 -c copy out.mp4` for a head/tail trim (no re-encode; cuts at keyframes). Never cut between an instruction and its first diff. Speeding up a stretch is better than cutting it: `ffmpeg -i in.mp4 -filter_complex "[0:v]setpts=0.25*PTS[v]" -map "[v]" -an out.mp4` plays at 4x (mute it, say so with an on-screen title).
 
