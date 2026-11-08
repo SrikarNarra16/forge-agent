@@ -156,6 +156,8 @@ npm run test:ui:panel    # Playwright clicks on the panel's review card (no mode
 #   TRUEFORGE_BASE_URL=http://localhost:8791 npm run test:vsix -- forge-agent-0.0.1.vsix
 ```
 
+Submission kit: `docs/recording/` (`preflight.sh` prints GO / NO-GO for a recording session, `reset.sh` returns to the task start state, `shot-list.md`, `recording-notes.md`) and `docs/writeup/WRITEUP.md`, rendered to PDF with `npm run writeup:pdf` (needs Google Chrome; checks the 3-page limit and the 8 headings).
+
 `docs/e2e.md` explains the end-to-end layers, their isolation (temp profile, throwaway `e2e-<pid>-` TrueForge resources, your own resources are never touched) and known risks; `docs/eval-results.md` has the evaluation of Tasks A and B; `docs/approval-friction.md` the approval measurements.
 
 Built with the help of AI coding tools (Claude Code); every change is reviewed and tested by the author.
