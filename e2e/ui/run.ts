@@ -20,7 +20,7 @@ import { BASE_URL, ROOT, createEnvironment, snapshotTrueForge, type E2eEnvironme
 import { fetchSessionDetails, fetchSessionUsage, sessionsInWindow, type SessionDetail, type SessionUsage } from "./usage";
 import { classifyCommand } from "../../src/mcp/commandAllow";
 import { autoAllowedInWindow, commandReport, commandsInWindow, formatTimingTable, parseForgeLog, timingRow, type CommandRecord, type TimingRow } from "./timing";
-import { MOD, drive, gitStatus, launch, makeScreens, openPanel, panelFrame, readWorkspaceFile, sendPrompt, statusText, until, verify, type Launched, type Screens } from "./driver";
+import { MOD, drive, gitStatus, launch, makeScreens, openPanel, panelFrame, readWorkspaceFile, sendPrompt, statusText, until, verify, verifySummary, type Launched, type Screens } from "./driver";
 
 const exec = promisify(execFile);
 const TASK_A_INSTRUCTION = "treat 'off' and 'n' as false too, case-insensitively, and update the docstring to list every false value";
@@ -125,7 +125,7 @@ async function taskB(l: Launched, env: E2eEnvironment, screens: Screens, results
   const log = await drive(l.page, frame, screens, { timeoutMs: 600_000 });
   await screens.shot(l.page, "B-done");
   const v = await timed(() => verify("task-b", env));
-  results.push({ timing: timingOf(sentAt, log, Date.now(), v.ms), step: "Task B (panel)", ok: v.pass && log.lensSeen, detail: `${log.commandsAllowed} command card(s) allowed, ${log.reviewsApplied} review(s) applied (${log.appliedWithPanelButton} with the panel's "Apply accepted" button, the rest with ${MOD}+Enter), CodeLens text seen: ${log.lensSeen}; verify-task-b ${v.pass ? "PASS" : `FAIL\n${v.out.slice(-600)}`}`, seconds: (Date.now() - t0) / 1000 });
+  results.push({ timing: timingOf(sentAt, log, Date.now(), v.ms), step: "Task B (panel)", ok: v.pass && log.lensSeen, detail: `${log.commandsAllowed} command card(s) allowed, ${log.reviewsApplied} review(s) applied (${log.appliedWithPanelButton} with the panel's "Apply accepted" button, the rest with ${MOD}+Enter), CodeLens text seen: ${log.lensSeen}; verify-task-b: ${await verifySummary("task-b", v.out)}`, seconds: (Date.now() - t0) / 1000 });
 }
 
 /**
@@ -170,9 +170,10 @@ async function main(): Promise<number> {
   }
   if (!(await snapshotTrueForge())) throw new Error("TrueForge is not reachable; start it with npm run tf:start");
 
-  // The rehearsal runs with both opt-in auto-allow switches ON (docs/approval-friction.md); `test:ui` leaves them off.
-  const autoAllow = mode === "rehearsal" && process.env["FORGE_UI_AUTOALLOW"] !== "0";
-  const env = await createEnvironment(autoAllow ? { extraSettings: { "forge.autoAllowCommands.readOnly": true, "forge.autoAllowCommands.tests": true } } : {});
+  // DEFAULT settings, as a user has them: auto-detected venv prefix (the copy has a real .venv), both opt-in auto-allow
+  // switches OFF, so every run_command card needs a click. FORGE_UI_AUTOALLOW=1 turns both switches on (docs/approval-friction.md).
+  const autoAllow = process.env["FORGE_UI_AUTOALLOW"] === "1";
+  const env = await createEnvironment({ defaultSettings: true, ...(autoAllow ? { extraSettings: { "forge.autoAllowCommands.readOnly": true, "forge.autoAllowCommands.tests": true } } : {}) });
   let counted: { tokens: number; rows: TimingRow[] } = { tokens: 0, rows: [] };
   let usage: SessionUsage | undefined;
   let details: SessionDetail[] = [];
@@ -192,7 +193,7 @@ async function main(): Promise<number> {
       const sentA = await inlineTaskA(l.page, env, frame, screens, "A");
       const logA = await drive(l.page, frame, screens, { timeoutMs: 180_000 });
       const vA = await timed(() => verify("task-a", env));
-      results.push({ timing: timingOf(sentA, logA, Date.now(), vA.ms), step: "Task A (inline)", ok: vA.pass && logA.lensSeen, detail: `${logA.reviewsApplied} review(s) applied (${logA.appliedWithPanelButton} with the panel button); verify-task-a ${vA.pass ? "PASS" : `FAIL\n${vA.out.slice(-500)}`}`, seconds: (Date.now() - t0) / 1000 });
+      results.push({ timing: timingOf(sentA, logA, Date.now(), vA.ms), step: "Task A (inline)", ok: vA.pass && logA.lensSeen, detail: `${logA.reviewsApplied} review(s) applied (${logA.appliedWithPanelButton} with the panel button); verify-task-a: ${await verifySummary("task-a", vA.out)}`, seconds: (Date.now() - t0) / 1000 });
       await screens.shot(l.page, "A-done");
       await resetWorkspace(env);
 
@@ -212,7 +213,7 @@ async function main(): Promise<number> {
       const pristine = await gitStatus(env);
       const logC = await drive(l.page, frameC, screens, { timeoutMs: 180_000 });
       const vC = await timed(() => verify("task-a", env));
-      results.push({ timing: timingOf(sentC, logC, Date.now(), vC.ms), step: "Task C (fallback)", ok: pristine === "" && vC.pass, detail: `fallback notice shown; workspace ${pristine === "" ? "pristine before the first apply" : `NOT pristine: ${pristine}`}; ${logC.reviewsApplied} review(s) applied; verify-task-a ${vC.pass ? "PASS" : "FAIL"}`, seconds: (Date.now() - t0) / 1000 });
+      results.push({ timing: timingOf(sentC, logC, Date.now(), vC.ms), step: "Task C (fallback)", ok: pristine === "" && vC.pass, detail: `fallback notice shown; workspace ${pristine === "" ? "pristine before the first apply" : `NOT pristine: ${pristine}`}; ${logC.reviewsApplied} review(s) applied; verify-task-a: ${await verifySummary("task-c", vC.out)}`, seconds: (Date.now() - t0) / 1000 });
       await screens.shot(l.page, "C-done");
     } else {
       await taskB(l, env, screens, results);

@@ -427,7 +427,14 @@ const taskBRejected: Scenario = {
     const finalText = [...s.items].reverse().find((i) => i.kind === "assistant")?.["text"];
     assert(typeof finalText === "string" && finalText.length > 0, "no final message");
     const v = await verifyTaskB(cfg);
-    return { detail: `agent told ("${told.slice(0, 90)}"); final message ${String(finalText).length} chars; verify-task-b ${v.code === 0 ? "PASS" : "FAIL (expected: a hunk was rejected)"}`, data: { verifyPass: v.code === 0, seconds: (Date.now() - t0) / 1000 } };
+    const commands = s.items.filter((i) => i.kind === "tool" && i["name"] === "run_command");
+    const allowed = commands.filter((i) => i["approval"] === "allowed").length;
+    const reviews = s.review.filter((r) => r.state === "applied" || r.state === "rejected").length;
+    const verifyResult = [...v.out.split("\n")].reverse().find((l) => l.trim().startsWith("RESULT:"))?.trim() ?? "no RESULT line";
+    return {
+      detail: `agent told ("${told.slice(0, 90)}"); final message ${String(finalText).length} chars; ${commands.length} run_command card(s), ${allowed} allowed (autopilot sends the Allow message), ${reviews} review(s) decided; verify-task-b: ${verifyResult}${v.code === 0 ? "" : " (a failure is expected here: a hunk was rejected)"}`,
+      data: { verifyPass: v.code === 0, verifyResult, seconds: (Date.now() - t0) / 1000, runCommands: commands.length, runCommandsAllowed: allowed },
+    };
   },
 };
 

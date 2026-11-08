@@ -375,3 +375,14 @@ Per launch (ms): 519, 510, 518, 535, 516
 | 13 | PASS | hermetic | 0.8 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
 | 14 | PASS | hermetic | 38.4 s | CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s | 30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished |
 
+## 2026-11-08 04:26 (hermetic run, pid 75772)
+
+| # | Result | Kind | Time | Scenario | Detail |
+|---|---|---|---|---|---|
+| 0 | PASS | hermetic | 0.0 s | Normal activation (no FORGE_E2E) registers no forge.e2e.* command | 24 forge.* commands, none of them forge.e2e.* |
+| 3 | PASS | hermetic | 0.4 s | After an apply, ONE real `undo` restores the pre-apply text (single undo step) | one undo restored the exact pre-apply text (3 hunks applied as one undo step) |
+| 4 | PASS | hermetic | 0.4 s | Undo run restores the files (Fake Proposal) | git status clean after Undo run |
+| 11 | PASS | hermetic | 3.6 s | Reject hunk 1, accept the rest, apply: 10 times in a row with the file not open in any editor (no model) | 10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged 0 closed-document retries (0 where the edit had already landed and only needed saving); 37 Forge log lines read |
+| 12 | PASS | hermetic | 0.6 s | Panel buttons: 'Apply accepted' with 2 of 3 hunks (1 undecided) writes 2, one undo restores; 'Reject all' writes nothing | Apply accepted: "2 of 3 hunks accepted, 1 undecided", 2 hunks on disk (hunk 1 absent), a double click applied once, ONE undo restored the exact text; Reject all: state rejected, git clean, a stale Apply click ignored |
+| 13 | PASS | hermetic | 0.7 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
+

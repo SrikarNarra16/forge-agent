@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, unlinkSync } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -216,4 +216,17 @@ export async function gitStatus(env: E2eEnvironment): Promise<string> {
 
 export async function readWorkspaceFile(env: E2eEnvironment, rel: string): Promise<string> {
   return readFile(join(env.workspace.root, rel), "utf8");
+}
+
+/**
+ * What a verify script said: its RESULT line ("RESULT: PASS (19/19 checks)") and every failing check by name. The full
+ * output is written to e2e-output/verify-<label>.txt so the per-check results can be read afterwards.
+ */
+export async function verifySummary(label: string, out: string): Promise<string> {
+  await mkdir(join(ROOT, "e2e-output"), { recursive: true });
+  await writeFile(join(ROOT, "e2e-output", `verify-${label}.txt`), out, "utf8");
+  const lines = out.split("\n").map((l) => l.trim());
+  const result = [...lines].reverse().find((l) => l.startsWith("RESULT:")) ?? "no RESULT line";
+  const failing = lines.filter((l) => l.startsWith("FAIL"));
+  return `${result}${failing.length ? `; failing: ${failing.map((l) => l.slice(0, 90)).join(" | ")}` : ""}`;
 }

@@ -85,7 +85,13 @@ export interface E2eEnvironment {
   cleanup(): Promise<void>;
 }
 
-export async function createEnvironment(options: { extraSettings?: Record<string, unknown> } = {}): Promise<E2eEnvironment> {
+/**
+ * `defaultSettings` (or E2E_DEFAULT_SETTINGS=1): run with the product's DEFAULT settings, as a user would: no explicit
+ * forge.commandPrefix (so the auto-detected `. .venv/bin/activate &&` is used; the copy gets a real `.venv`) and both
+ * forge.autoAllowCommands.* off (their default). Without it the tests set an explicit prefix that points at the fixture's python.
+ */
+export async function createEnvironment(options: { extraSettings?: Record<string, unknown>; defaultSettings?: boolean } = {}): Promise<E2eEnvironment> {
+  const defaultSettings = options.defaultSettings === true || process.env["E2E_DEFAULT_SETTINGS"] === "1";
   const scrubbed = scrubEnvironment();
   if (scrubbed.length > 0) console.log(`Removed ${scrubbed.length} inherited VS Code/Electron environment variable(s) so the test instance is fully separate: ${scrubbed.join(", ")}`);
   const prefix = `e2e-${process.pid}-`;
@@ -109,13 +115,13 @@ export async function createEnvironment(options: { extraSettings?: Record<string
   process.once("SIGTERM", bail("terminated"));
 
   try {
-    workspace = await createWorkspace(); // clean clone at the pinned commit; `import flask` verified to resolve into the copy
+    workspace = await createWorkspace({ realVenv: defaultSettings }); // clean clone at the pinned commit; `import flask` verified to resolve into the copy
     console.log(`Workspace: ${workspace.root}`);
     await mkdir(join(userData, "User"), { recursive: true });
     const venvBin = join(workspace.python, "..");
     const settings: Record<string, unknown> = {
       "forge.models": ["deepseek/flash", "deepseek/v4-pro"],
-      "forge.commandPrefix": `export PATH='${venvBin}':"$PATH" PYTHONPATH='${join(workspace.root, "src")}' PYTHONDONTWRITEBYTECODE=1 &&`,
+      ...(defaultSettings ? {} : { "forge.commandPrefix": `export PATH='${venvBin}':"$PATH" PYTHONPATH='${join(workspace.root, "src")}' PYTHONDONTWRITEBYTECODE=1 &&` }),
       "forge.resourcePrefix": prefix,
       "forge.rollbackOnCancel": true,
       "forge.trueforge.baseUrl": BASE_URL,

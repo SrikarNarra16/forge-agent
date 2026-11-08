@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -37,7 +37,7 @@ export async function assertImportsFromCopy(root: string, python: string): Promi
 }
 
 /** A clean `git clone --local` of the pinned fixture in a fresh temp dir. The fixture itself is only read. */
-export async function createWorkspace(options: { fixture?: string; python?: string } = {}): Promise<Workspace> {
+export async function createWorkspace(options: { fixture?: string; python?: string; /** Build a real `.venv` inside the copy (`python -m venv` + `pip install -e . pytest`), like scripts/setup-fixture.sh, so the auto-detected `. .venv/bin/activate &&` prefix works. */ realVenv?: boolean } = {}): Promise<Workspace> {
   const fixture = options.fixture ?? FIXTURE;
   const python = options.python ?? FIXTURE_PYTHON;
   const parent = await mkdtemp(join(tmpdir(), "forge-eval-"));
@@ -49,8 +49,19 @@ export async function createWorkspace(options: { fixture?: string; python?: stri
     if (!head.startsWith(PINNED_COMMIT)) throw new Error(`ABORT: fixture is at ${head}, expected ${PINNED_COMMIT}`);
     const status = (await run("git", ["status", "--porcelain"], { cwd: root })).stdout.trim();
     if (status !== "") throw new Error(`ABORT: fresh clone is not clean:\n${status}`);
-    await assertImportsFromCopy(root, python);
-    return { root, python, env: pythonEnv(root), dispose };
+    let interpreter = python;
+    if (options.realVenv) {
+      // `.venv/` must be ignored in the copy (a clone does not carry the fixture's .git/info/exclude), or git status would not be clean
+      await appendFile(join(root, ".git", "info", "exclude"), ".venv/\n", "utf8");
+      await run(python, ["-m", "venv", join(root, ".venv")]);
+      interpreter = join(root, ".venv", "bin", "python");
+      await run(interpreter, ["-m", "pip", "install", "--quiet", "--upgrade", "pip"], { cwd: root });
+      await run(interpreter, ["-m", "pip", "install", "--quiet", "-e", root, "pytest"], { cwd: root, maxBuffer: 20_000_000 });
+      const after = (await run("git", ["status", "--porcelain"], { cwd: root })).stdout.trim();
+      if (after !== "") throw new Error(`ABORT: the copy is not clean after creating its virtualenv:\n${after}`);
+    }
+    await assertImportsFromCopy(root, interpreter);
+    return { root, python: interpreter, env: pythonEnv(root), dispose };
   } catch (err) {
     await dispose();
     throw err;

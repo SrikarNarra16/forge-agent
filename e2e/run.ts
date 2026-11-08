@@ -19,6 +19,7 @@ import { DEFAULT_SPEND_LIMIT_USD, USD_PER_MILLION_TOKENS, appendLedger, checkLim
 import { describeError } from "../src/trueforge/client";
 import type { E2eConfig, ScenarioResult } from "./common";
 import { BASE_URL, ROOT, createEnvironment, snapshotTrueForge, vscodeExecutable } from "./env";
+import { fetchSessionDetails, type SessionDetail } from "./ui/usage";
 
 const LIVE_BUDGET_USD = 0.6;
 const ESTIMATED_LIVE_TOKENS = 1_500_000; // one full live pass: Task A x3-4 (~10k each) + Task B x3 (~0.5-1.4M each)
@@ -80,8 +81,18 @@ async function main(): Promise<number> {
 
     const results: ScenarioResult[] = [...(await runSuite("nohooks", false)), ...(await runSuite("scenarios", true))];
 
-    // token cost of the live scenarios -> the shared ledger and the per-pass dollar guard
-    const liveTokens = results.filter((r) => r.live && r.status !== "SKIP").reduce((n, r) => n + (typeof r.data?.["tokens"] === "number" ? (r.data["tokens"] as number) : 0), 0);
+    // token cost of the live scenarios -> the shared ledger and the per-pass dollar guard. The recorder's own usage numbers repeat
+    // cumulative usage on every turn (they overcount), so TrueForge's session records of this run's resources are used when readable.
+    let records: SessionDetail[] = [];
+    if (live) records = await fetchSessionDetails(BASE_URL, prefix).catch((err: unknown) => (console.error(`could not read TrueForge's session records: ${describeError(err)}`), []));
+    const recorded = records.reduce((n, d) => n + d.input + d.output, 0);
+    const reported = results.filter((r) => r.live && r.status !== "SKIP").reduce((n, r) => n + (typeof r.data?.["tokens"] === "number" ? (r.data["tokens"] as number) : 0), 0);
+    const liveTokens = records.length > 0 ? recorded : reported;
+    if (live && records.length > 0) {
+      const sum = (f: (d: SessionDetail) => number): number => records.reduce((n, d) => n + f(d), 0);
+      console.log(`TrueForge records of this live pass: ${records.length} session(s), ${sum((d) => d.turns)} turn(s), ${sum((d) => d.modelMessages)} model message(s), ${sum((d) => d.toolResponses)} tool call(s), ${recorded.toLocaleString("en-US")} tokens (the scenarios' own recorder reported ${reported.toLocaleString("en-US")})`);
+      await writeFile(join(out, "layer1-live-records.json"), JSON.stringify(records, null, 2), "utf8");
+    }
     if (liveTokens > 0) await appendLedger(join(ROOT, "eval-output", "ledger.jsonl"), { runId: `e2e-${process.pid}`, task: "e2e", model: "deepseek/*", attempt: 1, input: liveTokens, output: 0, at: new Date().toISOString() });
 
     if (live) {
