@@ -17,6 +17,8 @@ import { promisify } from "node:util";
 import { DEFAULT_SPEND_LIMIT_USD, appendLedger, checkLimits, estimatedSpendUsd, formatUsd, readLedger, totalsOf } from "../../scripts/eval/ledger";
 import { describeError } from "../../src/trueforge/client";
 import { BASE_URL, ROOT, createEnvironment, snapshotTrueForge, type E2eEnvironment } from "../env";
+import { recordSessionsClip } from "./sessionsPage";
+import { formatDuration, videoDurationSeconds } from "./videoDuration";
 import { fetchSessionDetails, fetchSessionUsage, sessionsInWindow, type SessionDetail, type SessionUsage } from "./usage";
 import { classifyCommand } from "../../src/mcp/commandAllow";
 import { autoAllowedInWindow, commandReport, commandsInWindow, formatTimingTable, parseForgeLog, timingRow, type CommandRecord, type TimingRow } from "./timing";
@@ -177,6 +179,8 @@ async function main(): Promise<number> {
   let counted: { tokens: number; rows: TimingRow[] } = { tokens: 0, rows: [] };
   let usage: SessionUsage | undefined;
   let details: SessionDetail[] = [];
+  const videos: string[] = [];
+  let closingClip = "";
   const runStarted = Date.now();
   const screens = await makeScreens();
   const results: StepResult[] = [];
@@ -239,11 +243,25 @@ async function main(): Promise<number> {
     });
     const videoDir = join(ROOT, "e2e-output", "video");
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    for (const f of await readdir(videoDir).catch(() => [] as string[])) if (f.endsWith(".webm") && !f.startsWith("ui-")) await rename(join(videoDir, f), join(videoDir, `ui-${mode}-${stamp}.webm`)).catch(() => undefined);
+    // the rehearsal is the BACKUP TAKE (automated, no narration): name its files so nobody mistakes them for the real recording
+    const mainName = mode === "rehearsal" ? `backup-take-rehearsal-${stamp}.webm` : `ui-${mode}-${stamp}.webm`;
+    for (const f of await readdir(videoDir).catch(() => [] as string[])) if (f.endsWith(".webm") && !f.startsWith("ui-") && !f.startsWith("backup-take-")) await rename(join(videoDir, f), join(videoDir, mainName)).catch(() => undefined);
+    videos.push(join(videoDir, mainName));
+    // closing shot as a second short clip: this run's Task B session on the TrueForge Sessions page (headless Chrome, 1080p)
+    const taskB = details.find((d) => d.agent.endsWith("forge-agent"));
+    if (mode === "rehearsal" && taskB) {
+      const clip = await recordSessionsClip({ baseUrl: BASE_URL, sessionId: taskB.id, videoDir, name: `backup-take-closing-sessions-${stamp}.webm` });
+      console.log(`Closing clip: ${clip.ok ? "OK" : "PROBLEM"}: ${clip.detail}`);
+      closingClip = `${clip.ok ? "OK" : "PROBLEM"}: ${clip.detail}`;
+      if (clip.file) videos.push(clip.file);
+    }
     await env.cleanup();
   }
 
   const fromTrueForge = usage !== undefined;
+  const durations = await videoDurationSeconds(videos.filter((v) => !v.endsWith("undefined"))).catch(() => []);
+  const videoLines = durations.map((d) => `- ${d.file.replace(`${ROOT}/`, "")}: ${d.seconds !== undefined ? formatDuration(d.seconds) : `duration unreadable (${d.error})`}`).join("\n");
+  if (videoLines) console.log(`\nVideos${mode === "rehearsal" ? " (BACKUP TAKE: automated rehearsal, no narration; nothing is uploaded)" : ""}:\n${videoLines}${closingClip ? `\nClosing clip: ${closingClip}` : ""}`);
   const measured = fromTrueForge || counted.tokens > 0;
   const spendTokens = usage ? usage.input + usage.output : measured ? counted.tokens : estimate;
   await appendLedger(ledgerFile, { runId: `ui-${mode}-${process.pid}`, task: "ui", model: "deepseek/*", attempt: 1, input: spendTokens, output: 0, at: new Date().toISOString() });
@@ -259,7 +277,7 @@ async function main(): Promise<number> {
   const rows = results.map((r) => `| ${r.ok ? "PASS" : "FAIL"} | ${r.step} | ${r.seconds.toFixed(0)} s | ${r.detail.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 400)} |`);
   const table = ["| Result | Step | Time | Detail |", "|---|---|---|---|", ...rows].join("\n");
   console.log(`\n${table}\n\nScreenshots: e2e-output/screens/   Video: e2e-output/video/ (1920x1080)`);
-  await appendFile(join(ROOT, "docs", "e2e-results.md"), `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} (UI layer, ${mode === "b" ? "Task B smoke test" : "rehearsal A+B+C"}, Playwright)\n\n${table}\n\n${timing ? `${timing}\n\nCommands (no-pipes rule unchanged):\n${commandLines}\n\n${spend}. Auto-allow switches: ${autoAllow ? "both ON" : "off"}.\n\n` : ""}`, "utf8");
+  await appendFile(join(ROOT, "docs", "e2e-results.md"), `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} (UI layer, ${mode === "b" ? "Task B smoke test" : "rehearsal A+B+C"}, Playwright)\n\n${table}\n\n${timing ? `${timing}\n\nCommands (no-pipes rule unchanged):\n${commandLines}\n\n${spend}. Auto-allow switches: ${autoAllow ? "both ON" : "off"}.\n\n` : ""}${videoLines ? `Videos (automated backup take, no narration):\n${videoLines}\n\n` : ""}`, "utf8");
   return results.every((r) => r.ok) ? 0 : 1;
 }
 
