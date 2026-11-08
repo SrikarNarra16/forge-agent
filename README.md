@@ -160,7 +160,7 @@ Submission kit: `docs/recording/` (`preflight.sh` prints GO / NO-GO for a record
 
 `docs/e2e.md` explains the end-to-end layers, their isolation (temp profile, throwaway `e2e-<pid>-` TrueForge resources, your own resources are never touched) and known risks; `docs/eval-results.md` has the evaluation of Tasks A and B; `docs/approval-friction.md` the approval measurements.
 
-Built with the help of AI coding tools (Claude Code); every change is reviewed and tested by the author.
+Built with the help of AI coding tools (Claude Code); see `docs/writeup/WRITEUP.md` for what was used.
 
 ## License
 
