@@ -19,8 +19,11 @@ export const FORGE_EXTRAS_SERVER = "forge-editor-extras";
 export const EXTRAS_DESCRIPTION = "Forge extra editor tools, discovered on demand: git_status, git_diff, find_references, open_in_editor (all read-only)";
 
 /** Exact command that starts TrueForge so it may call our loopback MCP server (SSRF guard allow-list). */
+/** The TrueForge version this extension was tested with; trueforge/start.sh pins the same one (test/startScript.test.ts keeps them equal). */
+export const TRUEFORGE_TESTED_VERSION = "0.183.1";
+
 export const TRUEFORGE_START_COMMAND =
-  `OUTBOUND_URL_ALLOWED_HOSTS='["localhost","127.0.0.1"]' MODEL_HTTP_CONNECT_TIMEOUT_MS=3000 MODEL_HTTP_MAX_RETRIES=1 npx @truefoundry/trueforge@latest`;
+  `OUTBOUND_URL_ALLOWED_HOSTS='["localhost","127.0.0.1"]' MODEL_HTTP_CONNECT_TIMEOUT_MS=3000 MODEL_HTTP_MAX_RETRIES=1 npx @truefoundry/trueforge@${TRUEFORGE_TESTED_VERSION}`;
 
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "");
@@ -42,9 +45,15 @@ export function sessionUrl(baseUrl: string, sessionId: string): string {
   return `${normalizeBaseUrl(baseUrl)}/sessions/${encodeURIComponent(sessionId)}`;
 }
 
-/** The "Open in TrueForge" target: the current session's page, or the Sessions list when no session exists yet. */
+/**
+ * The "Open in TrueForge" target: the current session in the Sessions page, or the Sessions list when no session exists yet.
+ * Checked in headless Chrome against TrueForge 0.183.1 (8 Nov 2026): `/sessions?sessionId=<id>` opens the Sessions page with
+ * that session's detail pane (stats, timeline of the turns, "Approved" pauses, every tool call as an "Agent steps" entry),
+ * which is what shows the approval pauses and the deferred tool loading; `/sessions/<id>` (sessionUrl, used in the log) opens
+ * the chat view of the same session with all steps collapsed into one group.
+ */
 export function trueForgeLink(baseUrl: string, sessionId: string | undefined): string {
-  return sessionId ? sessionUrl(baseUrl, sessionId) : `${normalizeBaseUrl(baseUrl)}/sessions`;
+  return sessionId ? `${normalizeBaseUrl(baseUrl)}/sessions?sessionId=${encodeURIComponent(sessionId)}` : `${normalizeBaseUrl(baseUrl)}/sessions`;
 }
 
 /**

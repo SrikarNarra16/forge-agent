@@ -57,10 +57,12 @@ describe("webview messages for the new buttons", () => {
 });
 
 describe("Open in TrueForge", () => {
-  it("links to the session page, and to the Sessions list when there is no session yet", () => {
-    expect(trueForgeLink("http://localhost:8790/", "01abc")).toBe("http://localhost:8790/sessions/01abc");
+  it("opens the session in the Sessions page (detail pane), or the Sessions list when there is no session yet", () => {
+    expect(trueForgeLink("http://localhost:8790/", "01abc")).toBe("http://localhost:8790/sessions?sessionId=01abc");
     expect(trueForgeLink("http://localhost:8790", undefined)).toBe("http://localhost:8790/sessions");
-    expect(trueForgeLink("http://tf.example:9000///", "s 1")).toBe("http://tf.example:9000/sessions/s%201");
+    expect(trueForgeLink("http://tf.example:9000///", "s 1")).toBe("http://tf.example:9000/sessions?sessionId=s%201");
+  });
+  it("the logged session URL stays the chat view of the session", () => {
     expect(sessionUrl("http://localhost:8790", "01abc")).toBe("http://localhost:8790/sessions/01abc");
   });
 });
