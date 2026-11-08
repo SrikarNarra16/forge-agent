@@ -104,7 +104,9 @@ export async function createEnvironment(options: { extraSettings?: Record<string
     if (cleaned) return;
     cleaned = true;
     for (const line of await cleanupTrueForge(prefix)) console.log(`cleanup: ${line}`);
-    await workspace?.dispose();
+    // FORGE_KEEP_WORKSPACE=1 leaves the temp Flask clone (with the agent's result) for inspection; remove it yourself afterwards
+    if (process.env["FORGE_KEEP_WORKSPACE"] === "1" && workspace) console.log(`Workspace kept for inspection: ${workspace.root}`);
+    else await workspace?.dispose();
     await rm(temp, { recursive: true, force: true });
   };
   const bail = (what: string) => (): void => {

@@ -9,6 +9,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 | 2 | `npm run test:ui` | the workbench UI with Playwright: Task B through the Forge panel with real clicks | yes (about $0.08) |
 | 2 hermetic | `COLD_MODE=immediate\|panel\|delayed npm run test:ui:cold` | cold starts: every launch a brand-new empty profile, then the first review diff; records whether and when the lens appears | no |
 | 2 hermetic | `TRUEFORGE_BASE_URL=http://localhost:8791 npm run test:vsix -- forge-agent-0.0.1.vsix` | installs the packaged .vsix into an empty profile, starts it WITHOUT a development path, checks activation, panel, connection, commands, review diff and the registration in TrueForge. Refuses to run against the default port 8790 (it registers `forge-editor` / `forge-agent` under their real names), so start a separate TrueForge (README, Troubleshooting) | no |
+| rehearsal | `TRUEFORGE_BASE_URL=http://localhost:8790 npm run rehearse:sessions` | headless Chrome walks the TrueForge Sessions page for the latest Forge session and saves screenshots to `docs/recording/` (read-only); the click path is in `docs/recording/shot-list.md` | no |
 | 2 hermetic | `npm run test:ui:lens` | opens the review diff 30 times in the real workbench and records how long the "Accept hunk" lens takes to be drawn (`LENS_PROPOSAL=task-a` uses the real Task A proposal shape, `LENS_REOPEN=1` clicks the queue row like the rehearsal driver does) | no |
 | 2 hermetic | `npm run test:ui:panel` | the panel's review controls, command-prefix line and Open in TrueForge button, with real clicks on Fake Proposal | no (and no TrueForge: the extension is pointed at a dead port) |
 | 2 | `npm run e2e:rehearsal` | Tasks A, B, C in order, with 1080p video, screenshots and a timing table (instruction -> first diff, first diff -> verified, model/tool calls, tokens). Runs with both `forge.autoAllowCommands.*` switches ON (`FORGE_UI_AUTOALLOW=0` turns them off) | yes (about $0.09-0.12) |
@@ -25,6 +26,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 |---|---|
 | `VSCODE_EXE` | VS Code executable to launch |
 | `E2E_LIVE=1` | also run the live (real model) scenarios of Layer 1 |
+| `FORGE_KEEP_WORKSPACE=1` | leave the temp Flask clone (with the agent's result) in place and print its path, so you can run commands on the result; delete it yourself afterwards |
 | `E2E_DEFAULT_SETTINGS=1` | run with the product's default settings, as a user has them: no explicit `forge.commandPrefix` (the temp Flask clone gets a real `.venv`, so the auto-detected `. .venv/bin/activate &&` is used) and the auto-allow switches off. `npm run e2e:rehearsal` always does this; `FORGE_UI_AUTOALLOW=1` turns both auto-allow switches on for it |
 | `E2E_ONLY=3,10` | run only these Layer 1 scenario ids |
 | `FORGE_E2E=1` | set by the runner INSIDE the test VS Code only: registers the `forge.e2e.*` hooks (see below) |

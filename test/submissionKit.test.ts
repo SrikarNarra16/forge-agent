@@ -32,12 +32,12 @@ describe("recording kit (docs/recording)", async () => {
   const dir = join(ROOT, "docs", "recording");
   const files = await readdir(dir);
 
-  it("has the four files", () => {
-    expect(files.sort()).toEqual(["preflight.sh", "recording-notes.md", "reset.sh", "shot-list.md"]);
+  it("has the kit's files", () => {
+    for (const f of ["preflight.sh", "reset.sh", "terminal-prep.sh", "estimate-timing.mjs", "shot-list.md", "recording-notes.md"]) expect(files, f).toContain(f);
   });
 
   it("contains no machine-specific path and no key-like text", async () => {
-    for (const f of files) {
+    for (const f of files.filter((name) => /\.(md|sh|mjs)$/.test(name))) {
       const text = await readFile(join(dir, f), "utf8");
       expect(text, f).not.toMatch(/\/Users\/|\/home\/[a-z]|C:\\Users/);
       expect(text, f).not.toMatch(/\bsk-[A-Za-z0-9_-]{16,}|\bgsk_[A-Za-z0-9]{10,}|\bAIza[0-9A-Za-z_-]{20,}/);

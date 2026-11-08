@@ -5,6 +5,9 @@
  *
  *   TRUEFORGE_BASE_URL=http://localhost:8791 npm run test:vsix -- forge-agent-0.0.1.vsix
  *
+ * Register the models in that TrueForge first (`npm run tf:setup -- --base-url http://localhost:8791`): the agents reference
+ * `deepseek/flash` and are only saved when that model exists.
+ *
  * SAFETY: the installed extension registers its resources under the DEFAULT names (forge-editor, forge-agent, ...), so
  * TRUEFORGE_BASE_URL must point at a SEPARATE TrueForge (own port, own database: README, Troubleshooting). The script
  * refuses to run against the default address, where your own forge-* resources live.
@@ -89,8 +92,14 @@ async function main(): Promise<number> {
     await screens.shot(page, "vsix-installed");
 
     // the installed extension registered itself in the (separate) TrueForge
-    const snap = await snapshotTrueForge();
-    check("registered in TrueForge", !!snap && ["forge-agent", "forge-inline"].every((a) => snap.agents.includes(a)) && ["forge-editor", "forge-editor-extras"].every((m) => snap.mcp.includes(m)), `agents: ${snap?.agents.join(", ")}; MCP servers: ${snap?.mcp.join(", ")}`);
+    // the MCP servers are registered first and the agents are saved right after, so wait for both (up to 30 s)
+    const complete = (snap: Awaited<ReturnType<typeof snapshotTrueForge>>): boolean => !!snap && ["forge-agent", "forge-inline"].every((a) => snap.agents.includes(a)) && ["forge-editor", "forge-editor-extras"].every((m) => snap.mcp.includes(m));
+    let snap = await snapshotTrueForge();
+    for (let i = 0; i < 60 && !complete(snap); i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      snap = await snapshotTrueForge();
+    }
+    check("registered in TrueForge", complete(snap), `agents: ${snap?.agents.join(", ")}; MCP servers: ${snap?.mcp.join(", ")}${complete(snap) ? "" : ". Agents are only saved when their model exists in TrueForge: run npm run tf:setup -- --base-url <that TrueForge> first"}`);
   } catch (err) {
     if (!rows.some((r) => !r.ok)) rows.push({ step: "install check", ok: false, detail: describeError(err) });
   } finally {

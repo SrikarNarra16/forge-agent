@@ -265,6 +265,7 @@
     "test:ui:cold": "tsx e2e/ui/coldStart.ts",
     "test:vsix": "tsx e2e/ui/vsixCheck.ts",
     "writeup:pdf": "tsx scripts/render-writeup.ts",
+    "rehearse:sessions": "tsx e2e/ui/sessionsPage.ts",
     "e2e:rehearsal": "tsx e2e/ui/run.ts rehearsal"
   },
   "dependencies": {

@@ -113,3 +113,38 @@ Spend of this run: counted from TrueForge session records (3 session(s), 11 turn
 | 13 | PASS | hermetic | 0.8 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
 | 14 | PASS | hermetic | 38.5 s | CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s | 30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished |
 
+## 2026-11-08 04:59 (UI layer, Task B smoke test, Playwright)
+
+| Result | Step | Time | Detail |
+|---|---|---|---|
+| FAIL | UI flow | 0 s | stopped: locator.waitFor: Timeout 120000ms exceeded. Call log:   - waiting for locator('.item.assistant').first() to be visible  |
+
+## 2026-11-08 05:03 (UI layer, Task B smoke test, Playwright)
+
+| Result | Step | Time | Detail |
+|---|---|---|---|
+| PASS | Task B (panel) | 162 s | 4 command card(s) allowed, 8 review(s) applied (8 with the panel's "Apply accepted" button, the rest with Meta+Enter), CodeLens text seen: true; verify-task-b: RESULT: PASS (7/7 checks) |
+
+| Task | Instruction -> first diff | First diff -> verified | (of which verify script) | Instruction -> verified | Model calls | Tool calls | Tokens | Commands auto-allowed | Allow clicks | Diff reopened (lens retry) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Task B | 46.1 s | 115.6 s | 1.1 s | 161.7 s | 31 | 45 | 863,463 | 0 | 4 | 0 |
+| **A+B+C** | **46.1 s** | **115.6 s** | 1.1 s | **161.7 s** | 31 | 45 | 863,463 | 0 | 4 | 0 |
+
+Commands (no-pipes rule unchanged):
+- Task B (panel): 4 run_command call(s): 0 auto-allowed, 4 asked (100%) - why they asked: 4 x pipe or redirect (e.g. `2>&1 | tail`)
+
+Spend of this run: counted from TrueForge session records (1 session(s), 11 turn(s)): 863,463 tokens = $0.07 at $0.08 per million tokens. Auto-allow switches: off.
+
+## 2026-11-08 05:10 (hermetic run, pid 86765)
+
+| # | Result | Kind | Time | Scenario | Detail |
+|---|---|---|---|---|---|
+| 0 | PASS | hermetic | 0.0 s | Normal activation (no FORGE_E2E) registers no forge.e2e.* command | 24 forge.* commands, none of them forge.e2e.* |
+| 10 | PASS | hermetic | 0.3 s | Forge panel view resolves and posts its init state; CodeLens provider returns Accept/Reject lenses | panel resolved (ready x1); 9 lenses: Accept all, Reject all, Apply (0 of 3 accepted) ▸, ✓ Accept hunk, ✗ Reject hunk |
+| 3 | PASS | hermetic | 0.4 s | After an apply, ONE real `undo` restores the pre-apply text (single undo step) | one undo restored the exact pre-apply text (3 hunks applied as one undo step) |
+| 4 | PASS | hermetic | 0.4 s | Undo run restores the files (Fake Proposal) | git status clean after Undo run |
+| 11 | PASS | hermetic | 3.6 s | Reject hunk 1, accept the rest, apply: 10 times in a row with the file not open in any editor (no model) | 10 of 10 rounds: hunk 1 rejected, 2 of 3 hunks applied and found on disk; the applier logged 0 closed-document retries (0 where the edit had already landed and only needed saving); 38 Forge log lines read |
+| 12 | PASS | hermetic | 0.6 s | Panel buttons: 'Apply accepted' with 2 of 3 hunks (1 undecided) writes 2, one undo restores; 'Reject all' writes nothing | Apply accepted: "2 of 3 hunks accepted, 1 undecided", 2 hunks on disk (hunk 1 absent), a double click applied once, ONE undo restored the exact text; Reject all: state rejected, git clean, a stale Apply click ignored |
+| 13 | PASS | hermetic | 0.7 s | Panel 'Accept all and apply': undecided hunks accepted, a rejected one stays rejected, ONE undo restores | round 1: hunk 1 rejected, 2+3 undecided -> applied 2 of 3, hunk 1 absent on disk, a stale click ignored; round 2: all undecided -> applied 3 of 3, ONE undo restored the exact text |
+| 14 | PASS | hermetic | 38.5 s | CodeLens provider answers for a freshly opened review diff: 30 of 30 rounds, right after the open and after 1.1 s | 30 of 30 rounds: Accept all, Reject all, Apply (n of 3 accepted) and 3 Accept hunk lenses offered right after the open and again after 1.1 s; none offered after the review finished |
+

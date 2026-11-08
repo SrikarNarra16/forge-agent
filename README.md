@@ -34,7 +34,7 @@ Then open the **Forge** view in the activity bar: the status bar should say `Tru
 npm run tf:start
 ```
 
-This runs `npx @truefoundry/trueforge@latest` (UI + API on http://localhost:8790, SQLite, no Redis) with the environment variables Forge needs, see `trueforge/start.sh`:
+This runs `npx @truefoundry/trueforge@0.183.1` (the version everything here was tested with; `TRUEFORGE_VERSION=latest npm run tf:start` tries another; UI + API on http://localhost:8790, SQLite, no Redis) with the environment variables Forge needs, see `trueforge/start.sh`:
 
 | Variable | Value | Why |
 |---|---|---|
@@ -124,6 +124,7 @@ Rules the code enforces and tests check: no model provider is ever called from t
 
 | Symptom | What to do |
 |---|---|
+| TrueForge's web page (Sessions) is blank but the extension works | TrueForge's files were replaced while it ran (a newer `npx` version). Stop it and start it again with `npm run tf:start` (pinned to the tested version; data is kept) |
 | Status bar says `TrueForge: disconnected` | TrueForge is not running or `forge.trueforge.baseUrl` is wrong. Start it with `npm run tf:start` |
 | **Port 8790 is in use** (another TrueForge, or something else) | Reuse the running TrueForge, or start a second one on another port with its own database: `SQLITE_PATH=/tmp/tf.sqlite npm run tf:start -- --port 8791`, then `npm run tf:setup -- --base-url http://localhost:8791` and set `forge.trueforge.baseUrl` to `http://localhost:8791` |
 | The agent cannot use its tools / "MCP server" errors | TrueForge was started without `OUTBOUND_URL_ALLOWED_HOSTS` (use `npm run tf:start`, not a plain `npx`), or Node is older than 22.14 |
@@ -153,6 +154,7 @@ npm run test:e2e         # real VS Code, hermetic scenarios (needs VS Code; set 
 npm run test:ui:panel    # Playwright clicks on the panel's review card (no model)
 # install check of the packaged .vsix, against a SEPARATE TrueForge (it registers forge-agent & co. under their real names):
 #   SQLITE_PATH=/tmp/tf.sqlite npm run tf:start -- --port 8791     # terminal 1
+#   export DEEPSEEK_API_KEY=... && npm run tf:setup -- --base-url http://localhost:8791   # models first: agents need them
 #   TRUEFORGE_BASE_URL=http://localhost:8791 npm run test:vsix -- forge-agent-0.0.1.vsix
 ```
 

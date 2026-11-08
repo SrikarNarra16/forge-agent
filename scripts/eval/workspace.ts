@@ -56,7 +56,7 @@ export async function createWorkspace(options: { fixture?: string; python?: stri
       await run(python, ["-m", "venv", join(root, ".venv")]);
       interpreter = join(root, ".venv", "bin", "python");
       await run(interpreter, ["-m", "pip", "install", "--quiet", "--upgrade", "pip"], { cwd: root });
-      await run(interpreter, ["-m", "pip", "install", "--quiet", "-e", root, "pytest"], { cwd: root, maxBuffer: 20_000_000 });
+      await run(interpreter, ["-m", "pip", "install", "--quiet", "-e", root, "pytest", "ruff"], { cwd: root, maxBuffer: 20_000_000 }); // ruff: the fixture has it too, so the agent's lint call works
       const after = (await run("git", ["status", "--porcelain"], { cwd: root })).stdout.trim();
       if (after !== "") throw new Error(`ABORT: the copy is not clean after creating its virtualenv:\n${after}`);
     }
