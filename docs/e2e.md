@@ -25,6 +25,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 |---|---|
 | `VSCODE_EXE` | VS Code executable to launch |
 | `E2E_LIVE=1` | also run the live (real model) scenarios of Layer 1 |
+| `E2E_DEFAULT_SETTINGS=1` | run with the product's default settings, as a user has them: no explicit `forge.commandPrefix` (the temp Flask clone gets a real `.venv`, so the auto-detected `. .venv/bin/activate &&` is used) and the auto-allow switches off. `npm run e2e:rehearsal` always does this; `FORGE_UI_AUTOALLOW=1` turns both auto-allow switches on for it |
 | `E2E_ONLY=3,10` | run only these Layer 1 scenario ids |
 | `FORGE_E2E=1` | set by the runner INSIDE the test VS Code only: registers the `forge.e2e.*` hooks (see below) |
 | `FORGE_RESOURCE_PREFIX` | prefix for the TrueForge resources; the runner sets `e2e-<pid>-` (also settable as `forge.resourcePrefix`) |
@@ -53,7 +54,7 @@ Two layers, deliberately separate. Both launch the REAL extension (from `dist/`,
 | 1 | Task A inline, accept all -> `verify-task-a.sh` PASS | live |
 | 2 | Task A, reject the code hunk -> only the docstring changed | live |
 | 5 | Task B via the panel, accept all -> `verify-task-b.sh` PASS (time, tool and model call counts, tokens recorded) | live |
-| 6 | Task B with one rejected hunk -> the agent is told and the result reported | live (failed once because of the applier race, now fixed; not re-run live yet, see docs/e2e-results.md finding 1) |
+| 6 | Task B with one rejected hunk -> the agent is told and the result reported | live (failed once because of the applier race; fixed, and PASSED live on 8 Nov 2026, see docs/e2e-results.md) |
 | 7 | Stop mid-run -> `cancelled`, workspace pristine | live |
 | 8 | Task C: chain [broken-endpoint/broken, deepseek/flash] -> fallback notice, clean before the first apply, Task A PASS | live |
 | 9 | Task C: chain [broken-endpoint/broken] only -> clear error, pristine workspace | live |

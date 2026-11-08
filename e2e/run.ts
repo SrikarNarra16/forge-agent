@@ -81,8 +81,9 @@ async function main(): Promise<number> {
 
     const results: ScenarioResult[] = [...(await runSuite("nohooks", false)), ...(await runSuite("scenarios", true))];
 
-    // token cost of the live scenarios -> the shared ledger and the per-pass dollar guard. The recorder's own usage numbers repeat
-    // cumulative usage on every turn (they overcount), so TrueForge's session records of this run's resources are used when readable.
+    // token cost of the live scenarios -> the shared ledger and the per-pass dollar guard. TrueForge's own session records of this
+    // run's resources are the source of truth and are used when readable; the scenarios' recorder numbers are kept as a cross-check
+    // (they agreed exactly on 8 Nov 2026: 604,057 tokens both ways).
     let records: SessionDetail[] = [];
     if (live) records = await fetchSessionDetails(BASE_URL, prefix).catch((err: unknown) => (console.error(`could not read TrueForge's session records: ${describeError(err)}`), []));
     const recorded = records.reduce((n, d) => n + d.input + d.output, 0);
