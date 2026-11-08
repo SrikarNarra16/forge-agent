@@ -3,11 +3,14 @@
 How to record, export and publish the demo video (max 4:00, editor visible, Tasks A, B, C in order, each followed by its verification, no cuts between instruction and diff). The plan of what to show and say is in `shot-list.md`; this file is the mechanics. Written for macOS; the Linux/Windows equivalents are in brackets.
 
 ## 0. The sequence on the day
+0. **After any code change, rebuild and reinstall the extension before recording:** `npm run package`, then `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension forge-agent-0.0.1.vsix --force`, then reload the VS Code window (Command Palette -> "Developer: Reload Window"). The window runs the INSTALLED copy, not the source; the preflight shows the installed version but cannot tell a stale build. (Last installed: the build that contains the "Open in TrueForge" link to the Sessions page.)
 1. `docs/recording/preflight.sh` must print **GO** (it lists what is wrong when it does not). Run it with VS Code open on the Flask fixture, so Forge has registered its agents.
-2. `docs/recording/reset.sh` returns the fixture to the start state; follow the checklist it prints (close editors, new chat, models).
+2. `docs/recording/reset.sh` returns the fixture to the start state; follow the checklist it prints (close editors, new chat, models, the terminal helpers). The chain for Task C and the switch back are described in `shot-list.md` ("Switching the model chain for Task C, and back").
 3. **Warm-up rule: run one throwaway diff before recording.** Command Palette -> **Forge: Fake Proposal**, wait until the "Accept hunk" buttons are drawn above the changes, then click **Reject all** in the Forge panel (nothing is written). One cold diff showed no CodeLens once in a live run (not reproducible in 120 warm and 20 cold test launches, see `docs/e2e.md` "Known risks"); a throwaway diff makes sure you see a problem before the camera does. Then run `reset.sh` once more.
 4. Start the recording, follow the shot list, stop the recording.
 5. Export, check the duration, upload, test the link, fill in the scorecard (sections 4 to 6).
+
+**TrueForge version.** `npm run tf:start` runs the version everything was tested with (0.183.1, set in `trueforge/start.sh`); a plain `npx @truefoundry/trueforge@latest` moved to 0.184.2 on 8 Nov 2026 and, started while an older TrueForge was still running, replaced the web UI files that one was serving: its Sessions page went blank (the API kept working). If the preflight reports a blank Sessions page, stop TrueForge (Ctrl+C in its terminal) and start it again with `npm run tf:start`; its data (SQLite) is kept. Back up the database folder first if you want to be careful. Do not start a second TrueForge with `@latest` while recording.
 
 ## 1. Recording setup
 **Screen and size**
@@ -44,7 +47,7 @@ ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 forge-demo.
 ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=p=0 forge-demo.mp4   # h264,1920,1080
 ls -lh forge-demo.mp4
 ```
-Without ffmpeg: QuickTime -> File -> Export As -> 1080p gives an H.264 `.mov`, which YouTube accepts; the duration is shown in QuickTime's title bar / Movie Inspector (Cmd+I).
+If `brew install ffmpeg` fails with "directories are not writable", Homebrew belongs to another macOS user: run the install as that user, or fix the ownership yourself (`sudo chown -R "$(whoami)" /opt/homebrew`), or download a static build of ffmpeg. Without ffmpeg: QuickTime -> File -> Export As -> 1080p gives an H.264 `.mov`, which YouTube accepts; the duration is shown in QuickTime's title bar / Movie Inspector (Cmd+I).
 
 **Trimming.** Cut only the dead time you are allowed to cut (shot list column "Cut?"): QuickTime -> Edit -> Trim (Cmd+T), or `ffmpeg -ss 00:00:05 -to 00:03:50 -i in.mp4 -c copy out.mp4` for a head/tail trim (no re-encode; cuts at keyframes). Never cut between an instruction and its first diff. Speeding up a stretch is better than cutting it: `ffmpeg -i in.mp4 -filter_complex "[0:v]setpts=0.25*PTS[v]" -map "[v]" -an out.mp4` plays at 4x (mute it, say so with an on-screen title).
 

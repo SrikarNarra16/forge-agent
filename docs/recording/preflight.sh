@@ -82,7 +82,13 @@ if [ "$CAP" = "200" ]; then
     if has "$MCPS" "$m"; then ok "MCP server $m" "registered"; else bad "MCP server $m" "missing: open VS Code with Forge installed so it registers on activation"; fi
   done
   SESS="$(curl -s -m 5 -H 'Accept: text/html' -o /dev/null -w '%{http_code}' "$BASE_URL/sessions" 2>/dev/null || true)"
-  if [ "$SESS" = "200" ]; then ok "TrueForge Sessions page" "$BASE_URL/sessions"; else warn "TrueForge Sessions page" "HTTP ${SESS:-none}; the closing shot needs it"; fi
+  # the page is a single-page app: it also needs the script it points at (it went missing once when `npx` replaced the
+  # files of a TrueForge that was still running, which leaves a blank page)
+  ASSET="$(curl -s -m 5 -H 'Accept: text/html' "$BASE_URL/sessions" 2>/dev/null | grep -o '/assets/[A-Za-z0-9._-]*\.js' | head -1)"
+  ASSET_CODE=""; [ -n "$ASSET" ] && ASSET_CODE="$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$BASE_URL$ASSET" 2>/dev/null || true)"
+  if [ "$SESS" = "200" ] && [ "$ASSET_CODE" = "200" ]; then ok "TrueForge Sessions page" "$BASE_URL/sessions (UI script loads)";
+  elif [ "$SESS" = "200" ]; then bad "TrueForge Sessions page" "the page loads but its script ${ASSET:-?} returns HTTP ${ASSET_CODE:-none}: the UI is blank. TrueForge's files were replaced while it ran; restart it with npm run tf:start (pinned to the tested version)";
+  else bad "TrueForge Sessions page" "HTTP ${SESS:-none}; the closing shot needs it"; fi
 else
   bad "models, agents, MCP servers" "skipped: TrueForge is not reachable"
 fi
@@ -110,6 +116,8 @@ else
   if [ -x "$VP" ]; then
     PV="$("$VP" -m pytest --version 2>&1 | head -1)"
     case "$PV" in pytest*) ok "fixture .venv + pytest" "$PV" ;; *) bad "fixture .venv + pytest" "pytest does not run: $PV" ;; esac
+    RV="$("$VP" -m ruff --version 2>&1 | head -1)"
+    case "$RV" in ruff*) ok "fixture ruff" "$RV (the agent's lint call works)" ;; *) warn "fixture ruff" "not installed: the agent's ruff call would fail (the fixture .venv: pip install ruff)" ;; esac
     FL="$("$VP" -c 'import flask,sys;print(flask.__file__)' 2>&1 | tail -1)"
     case "$FL" in "$FIXTURE"/*|*/fixtures/flask/src/flask/__init__.py) ok "import flask" "resolves into the fixture" ;; *) warn "import flask" "resolves to $FL" ;; esac
   else

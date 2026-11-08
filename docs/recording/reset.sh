@@ -24,10 +24,14 @@ cat <<'EOF'
        If a file shows a dot (unsaved), choose "Don't Save": the fixture was just reset on disk.
    [ ] Clear the Forge panel: click "New chat" in the panel header, or run "Developer: Reload Window"
        (reloading also re-registers Forge's agents in TrueForge and clears the review queue).
-   [ ] Models for the take:
-         Tasks A and B  ->  forge.models = ["deepseek/flash", "deepseek/v4-pro"]   (Command Palette: "Forge: Switch Model")
-         Task C         ->  forge.models = ["broken-endpoint/broken", "deepseek/flash"]
-       Change it back after Task C, and re-run the preflight, which refuses a chain that starts with a demo model.
+   [ ] Model chain for the take (Command Palette -> "Forge: Switch Model" moves the model you pick to the front):
+         Tasks A and B  ->  pick deepseek/flash                (chain starts with deepseek/flash)
+         Task C         ->  pick broken-endpoint/broken        (broken first, deepseek/flash as the fallback)
+       SWITCH BACK after Task C: "Forge: Switch Model" -> deepseek/flash, then run the preflight, which refuses a chain that
+       starts with a demo model. (The broken model then stays second in the chain, which is harmless; remove it from
+       forge.models in your user settings JSON, off camera, if you want the original chain.)
+   [ ] Terminal helpers: in the terminal you will show, `export FORGE=<forge-agent repository>`, `cd` into the fixture,
+       `PS1='$ '`, then `source "$FORGE/docs/recording/terminal-prep.sh"` (gives vA, vB, vC and rs).
    [ ] Open src/flask/helpers.py (Task A starts from it); the Forge panel can stay in the side bar.
    [ ] Warm-up rule: run ONE throwaway diff before recording: Command Palette -> "Forge: Fake Proposal", wait for the
        "Accept hunk" buttons, then "Reject all" in the panel (nothing is written). Then run this script again.
