@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     T_B4C: need("B4:deferred-loading"),
     VIDEO_LEN: `${fmt(report.durationSeconds)} long`,
     STOP_S: stopSeconds.toFixed(1),
-    SRC_STATS: `Size: ${src.files} source files (${src.lines.toLocaleString("en-US")} lines, extension host plus webview) and ${tests.files} test and e2e files (${tests.lines.toLocaleString("en-US")} lines; ${unit} unit tests run in CI on every push).`,
+    SRC_STATS: `Size: ${src.files} source files (${src.lines.toLocaleString("en-US")} lines, extension host plus webview) and ${tests.files} test and e2e files (${tests.lines.toLocaleString("en-US")} lines; ${unit} unit tests, 7 of which need the local Flask fixture and are skipped on a fresh clone; CI runs the rest on every push).`,
     SUBAGENT_FACT:
       session.subagentEvidence === 0
         ? "none was spawned in the video's Task B session, nor in the 14 flash and 5 v4-pro evaluation runs inspected earlier, so it is claimed as configured, not demonstrated."

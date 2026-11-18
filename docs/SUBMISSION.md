@@ -11,7 +11,7 @@
 | Write-up, direct file | https://raw.githubusercontent.com/SrikarNarra16/forge-agent/main/Forge-writeup.pdf |
 | Release tag | `v1.0.0-round1` |
 
-Checked on 18 Nov 2026 with `curl` and no credentials: see `docs/PROGRESS.md` for the HTTP status of each URL.
+Checked on 18 Nov 2026 with `curl`, no credentials: repo 200, PDF blob URL 200, raw PDF URL 200 (`%PDF-`). CI is green on the tagged commit.
 
 ## What YOU do by hand (the only manual steps)
 1. **Upload the video.** File: `e2e-output/video/forge-round1-submission.mp4` (H.264, 1920x1080, under 4 minutes; it is gitignored, so it is only on this machine).

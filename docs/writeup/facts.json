@@ -13,7 +13,7 @@
   "T_B4C": "2:46",
   "VIDEO_LEN": "3:30 long",
   "STOP_S": "0.1",
-  "SRC_STATS": "Size: 103 source files (12,150 lines, extension host plus webview) and 98 test and e2e files (13,172 lines; 1044 unit tests run in CI on every push).",
+  "SRC_STATS": "Size: 103 source files (12,150 lines, extension host plus webview) and 98 test and e2e files (13,172 lines; 1044 unit tests, 7 of which need the local Flask fixture and are skipped on a fresh clone; CI runs the rest on every push).",
   "SUBAGENT_FACT": "none was spawned in the video's Task B session, nor in the 14 flash and 5 v4-pro evaluation runs inspected earlier, so it is claimed as configured, not demonstrated.",
   "SPEND_TOKENS": "25.9M",
   "SPEND_USD": "$2.07",

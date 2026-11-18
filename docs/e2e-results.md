@@ -228,3 +228,53 @@ This take on VS Code 1.145.0 and TrueForge 0.183.1 (restarted, pinned).
 | PASS | Accept all and apply | "Applied 3 of 3 hunks."; 3 new edits on disk |
 | PASS | workspace after the run | git status: M src/flask/helpers.py; ?? .venv/bin/activate (the first review was applied on purpose) |
 
+
+## 2026-11-18 (submission video take, `npm run video:take`, Playwright + Swift encoder)
+
+The submitted video is take `final2`: an automated run of the installed .vsix in a real VS Code (VS Code 1.145.0, TrueForge 0.183.1), 1920x1080, H.264, **3:30** (210.3 s, from the file's own metadata: `mdls` reports 210.33 s, H.264, 1920x1080). The first official take (`final1`) failed: `verify-task-b` 6/7 (check (g): the agent modified a file outside src/tests/docs) and 4:13 long; it was discarded, not edited. `final2` is the first pass under 3:45, so the take loop stopped there (2 of the 3 allowed takes).
+
+| Result | Check | Detail |
+|---|---|---|
+| PASS | Task A: verify-task-a | scripts/verify-task-a.sh |
+| PASS | Task A: Cmd+Z once changed the editor | the text changed after one undo |
+| PASS | Task A: redo restored it | the tab is clean again after redo |
+| PASS | Task B: verify-task-b | RESULT: PASS (7/7 checks) |
+| PASS | Task B: pytest in the terminal | passed |
+| PASS | Task B: flask --help lists config | lists config |
+| PASS | Task B: masked JSON | masked |
+| PASS | Task B: Context section shown with reasons | 5 review(s), 9 command card(s) allowed |
+| PASS | Sessions page: approval pauses and deferred loading visible | 12 approval pause(s), deferred-loading steps shown |
+| PASS | Task C: fallback notice shown | switched to deepseek/flash |
+| PASS | Task C: git status clean before apply | clean |
+| PASS | Task C: verify-task-a on the fallback model | scripts/verify-task-a.sh |
+| PASS | Stop: stopped state within 2 s | 0.10 s |
+| PASS | Stop: git status clean | clean |
+| PASS | all timestamps recorded | yes |
+| PASS | duration under 3:55 | 3:30.3 (210.3 s) |
+
+Task B session of this take (TrueForge records): 13 turns, 528,001 tokens, tool calls {"read_file": 10, "search_code": 4, "run_command": 9, "?": 14, "propose_edit": 5, "get_diagnostics": 1, "list_tools": 1, "get_tool_info": 1, "call_tool": 1}, subagent events 0, largest input seen 30,613 tokens. Spend of the take: 547,208 tokens (about $0.04 at $0.08 per million).
+
+Timestamps (position in the final MP4, from the encoder's marks and confirmed by decoding the file at those seconds with `scripts/video/inspect.ts`):
+
+| Rubric | What is on screen | Time in the MP4 |
+|---|---|---|
+| A1 | Task A: per-hunk diff shown (Accept hunk / Reject hunk) | 0:19 |
+| A1 | Task A: verified, FLASK_DEBUG=off prints False | 0:39 |
+| B2 | Undo shown: one Cmd+Z | 0:43 |
+| A2 | Task B: prompt sent (no files named) | 0:50 |
+| B1 | Task B: Context section with reasons | 1:43 |
+| B2 | Task B: first diff review | 1:40 |
+| A2 | Task B: run_command approval card | 1:05 |
+| A2 | Task B: pytest tests/test_cli.py -q | 2:24 |
+| A2 | Task B: flask --help lists config | 2:29 |
+| A2 | Task B: masked JSON from a demo app | 2:35 |
+| B4 | TrueForge Sessions page (turns, tool calls) | 2:40 |
+| B4 | Sessions: approval pauses | 2:43 |
+| B4 | Sessions: Agent steps open (list_tools / get_tool_info / call_tool) | 2:46 |
+| B3 | Task C: automatic fallback notice | 2:59 |
+| B3 | Task C: git status clean | 3:04 |
+| A3 | Stop clicked mid-stream | 3:24 |
+| A3 | Stopped state shown | 3:24 |
+| A3 | Stop: git status clean | 3:26 |
+
+Hermetic suite on the final build (after the panel-header CSS fix): `npm run test:e2e` 8 PASS (7 live scenarios skipped by design), `npm run test:ui:panel` all PASS, 1044 unit tests, typecheck and lint clean, fresh clone of the public repo builds, tests and packages.
