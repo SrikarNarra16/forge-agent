@@ -173,7 +173,7 @@ npm run test:ui:panel    # Playwright clicks on the panel's review card (no mode
 #   TRUEFORGE_BASE_URL=http://localhost:8791 npm run test:vsix -- forge-agent-0.0.1.vsix
 ```
 
-Submission kit: `docs/recording/` (`preflight.sh` prints GO / NO-GO for a recording session, `reset.sh` returns to the task start state, `shot-list.md`, `recording-notes.md`) and `docs/writeup/WRITEUP.md`, rendered to PDF with `npm run writeup:pdf` (needs Google Chrome; checks the 3-page limit and the 8 headings).
+Submission kit: `docs/SUBMISSION.md` (links to paste and the few manual steps), `Forge-writeup.pdf` (rendered from `docs/writeup/WRITEUP.md` by `npm run writeup:pdf`; `npm run writeup:set-url -- <video URL>` fills in the video link and re-checks it; needs Google Chrome), `docs/walkthrough.md` (architecture per rubric item, how to repeat Task A with another model, likely questions), `docs/model-matrix.md`, and the video: `npm run video:take` drives the real extension in a real VS Code (Playwright), captures captioned frames and encodes an H.264 MP4 with a small Swift tool (macOS only, no ffmpeg); the plan is in `docs/recording/shot-list.md`. The older human-recording kit (`docs/recording/preflight.sh`, `reset.sh`, `recording-notes.md`) is kept as a fallback.
 
 `docs/e2e.md` explains the end-to-end layers, their isolation (temp profile, throwaway `e2e-<pid>-` TrueForge resources, your own resources are never touched) and known risks; `docs/eval-results.md` has the evaluation of Tasks A and B; `docs/approval-friction.md` the approval measurements.
 
