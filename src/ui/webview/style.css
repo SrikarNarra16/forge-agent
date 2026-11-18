@@ -24,8 +24,9 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 button.danger { color: var(--vscode-errorForeground); background: transparent; border-color: var(--vscode-errorForeground); }
 button.danger:disabled { border-color: var(--vscode-widget-border, #888); color: var(--vscode-disabledForeground); }
 
-.bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--vscode-widget-border, #444); flex: none; }
-.bar .spacer { flex: 1; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 6px 8px; border-bottom: 1px solid var(--vscode-widget-border, #444); flex: none; }
+.bar .spacer { flex: 1 1 0; min-width: 0; }
+.bar button { white-space: nowrap; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-disabledForeground); flex: none; }
 .dot.state-running { background: var(--vscode-charts-blue, #3794ff); animation: pulse 1s infinite; }
 .dot.state-awaitingApproval { background: var(--vscode-charts-yellow, #cca700); animation: pulse 1.4s infinite; }
