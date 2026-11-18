@@ -43,10 +43,12 @@ async function main(): Promise<void> {
     if (v === undefined) throw new Error(`mark ${k} missing`);
     return fmt(v);
   };
-  const stopMs = m["S:stopped"] !== undefined && m["S:stop-clicked"] !== undefined ? m["S:stopped"] - m["S:stop-clicked"] : 0;
+  const stopCheck = (JSON.parse(await readFile(join(dir, "report.json"), "utf8")) as { checks: Array<{ name: string; detail: string }> }).checks.find((c) => c.name.startsWith("Stop: stopped state"));
+  const stopSeconds = Number(stopCheck?.detail.match(/([\d.]+) s/)?.[1] ?? "NaN");
   const src = await count(["src"], /\.(ts|css)$/);
   const tests = await count(["test", "e2e"], /\.ts$/);
-  const unit = (await exec("npx", ["vitest", "run"], { cwd: ROOT, maxBuffer: 20_000_000 }).then((r) => r.stdout, (e: { stdout?: string }) => e.stdout ?? "")).match(/Tests\s+(\d+) passed/)?.[1] ?? "?";
+  const vt = await exec("npx", ["vitest", "run"], { cwd: ROOT, maxBuffer: 20_000_000 }).then((r) => r.stdout + r.stderr, (e: { stdout?: string; stderr?: string }) => (e.stdout ?? "") + (e.stderr ?? ""));
+  const unit = vt.replace(/\u001b\[[0-9;]*m/g, "").match(/Tests\s+(\d+) passed/)?.[1] ?? "?";
   const ledger = totalsOf(await readLedger(join(ROOT, "eval-output", "ledger.jsonl")));
   const facts: Record<string, string> = {
     T_A1: need("A1:per-hunk-diff"),
@@ -62,7 +64,7 @@ async function main(): Promise<void> {
     T_B4: need("B4:sessions-page"),
     T_B4C: need("B4:deferred-loading"),
     VIDEO_LEN: `${fmt(report.durationSeconds)} long`,
-    STOP_S: (stopMs / 1000).toFixed(1),
+    STOP_S: stopSeconds.toFixed(1),
     SRC_STATS: `Size: ${src.files} source files (${src.lines.toLocaleString("en-US")} lines, extension host plus webview) and ${tests.files} test and e2e files (${tests.lines.toLocaleString("en-US")} lines; ${unit} unit tests run in CI on every push).`,
     SUBAGENT_FACT:
       session.subagentEvidence === 0

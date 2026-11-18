@@ -1,0 +1,22 @@
+{
+  "T_A1": "0:19",
+  "T_A1V": "0:39",
+  "T_A2": "0:50",
+  "T_A2V": "2:24, 2:29, 2:35",
+  "T_A3": "3:24",
+  "T_B1": "1:43",
+  "T_B2": "1:40",
+  "T_B2U": "0:43",
+  "T_B3": "2:59",
+  "T_B3G": "3:04",
+  "T_B4": "2:40",
+  "T_B4C": "2:46",
+  "VIDEO_LEN": "3:30 long",
+  "STOP_S": "0.1",
+  "SRC_STATS": "Size: 103 source files (12,150 lines, extension host plus webview) and 98 test and e2e files (13,172 lines; 1044 unit tests run in CI on every push).",
+  "SUBAGENT_FACT": "none was spawned in the video's Task B session, nor in the 14 flash and 5 v4-pro evaluation runs inspected earlier, so it is claimed as configured, not demonstrated.",
+  "SPEND_TOKENS": "25.9M",
+  "SPEND_USD": "$2.07",
+  "TAKE_TOKENS": "547,208",
+  "MAX_INPUT": "30,613"
+}

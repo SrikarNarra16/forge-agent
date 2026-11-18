@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..");
-const HEADINGS = ["Team", "Starting point", "Architecture on TrueForge", "How context is selected", "Model setup", "Scorecard with timestamps", "Tools used", "Known limitations"];
+import { HEADINGS } from "../scripts/render-writeup";
 
 describe("write-up (docs/writeup/WRITEUP.md)", async () => {
   const md = await readFile(join(ROOT, "docs", "writeup", "WRITEUP.md"), "utf8");
@@ -12,11 +12,16 @@ describe("write-up (docs/writeup/WRITEUP.md)", async () => {
     expect([...md.matchAll(/^#{1,6} (.+)$/gm)].map((m) => m[1])).toEqual(HEADINGS);
   });
 
-  it("has placeholders only for the team, the video URL and the scorecard timestamps", () => {
-    const allowed = /^\[\[(TEAM NAME|MEMBERS|VIDEO URL|m:ss|shown at m:ss, or "not shown")\]\]$/;
-    const found = [...md.matchAll(/\[\[[^\]]+\]\]/g)].map((m) => m[0]);
-    expect(found.length).toBeGreaterThan(0);
-    expect(found.filter((p) => !allowed.test(p))).toEqual([]);
+  it("has no placeholder except the video URL; every {{TOKEN}} is a known team fact or a take fact", async () => {
+    const team = JSON.parse(await readFile(join(ROOT, "docs", "writeup", "team.json"), "utf8")) as Record<string, string>;
+    const facts = JSON.parse(await readFile(join(ROOT, "docs", "writeup", "facts.json"), "utf8")) as Record<string, string>;
+    const known = new Set(["TEAM", "TEAM_ID", "COMPETITION_ID", "MEMBER", "GITHUB", "COLLEGE", "REPO", ...Object.keys(facts)]);
+    const tokens = [...md.matchAll(/\{\{([A-Z_0-9]+)\}\}/g)].map((m) => m[1] as string);
+    expect(tokens.filter((t) => !known.has(t))).toEqual([]);
+    expect(md).not.toMatch(/\[\[[^\]]+\]\]/);
+    expect(md).toContain("<VIDEO_URL>");
+    expect(team["teamId"]).toBe("TM-2C05ECD8CA7");
+    expect(JSON.stringify(team) + md).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/); // no e-mail address anywhere in the write-up
   });
 
   it("stays short enough for 3 pages (rendered: about 2.5 pages at 1,900 words)", () => {

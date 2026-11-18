@@ -59,20 +59,22 @@ export async function writeTeam(t: TeamFacts): Promise<void> {
 const INK = "#1b1612";
 const AMBER = "#e8a33d";
 const CSS = `
-@page { size: A4; margin: 0; }
+@page { size: A4; margin: 14mm 15mm 15mm 15mm; }
 * { box-sizing: border-box; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body { font: 9.6pt/1.36 "Helvetica Neue", Helvetica, Arial, sans-serif; color: ${INK}; margin: 0; background: #fff; counter-reset: sec; }
-.band { background: ${INK}; color: #fff7ea; margin: -14mm -15mm 4.5mm; padding: 17mm 15mm 6mm; display: flex; justify-content: space-between; align-items: flex-end; gap: 8mm; }
+.band { background: ${INK}; color: #fff7ea; margin: 0 0 4mm; padding: 6mm 8mm 5mm; border-radius: 2.5mm; display: flex; justify-content: space-between; align-items: flex-end; gap: 8mm; }
 .band > div { min-width: 0; }
 .band .name { font-size: 27pt; font-weight: 800; letter-spacing: .5pt; color: ${AMBER}; line-height: 1; }
-.band .tag { font-size: 9.5pt; color: #d9c9ad; margin-top: 3pt; }
-.band .team { text-align: right; font-size: 11pt; font-weight: 700; line-height: 1.35; }
+.band .tag { font-size: 9pt; color: #d9c9ad; margin-top: 3pt; }
+.band .team { white-space: nowrap; text-align: right; font-size: 11pt; font-weight: 700; line-height: 1.35; }
 .band .team span { display: block; font-weight: 400; font-size: 9pt; color: #d9c9ad; }
 p { margin: 0 0 3.5pt; }
 h2 { counter-increment: sec; font-size: 11.5pt; margin: 8pt 0 3.5pt; padding-bottom: 1.5pt; border-bottom: 1.2pt solid ${AMBER}; break-after: avoid; display: flex; align-items: center; gap: 6pt; color: ${INK}; }
 h2::before { content: counter(sec); display: inline-flex; align-items: center; justify-content: center; width: 14pt; height: 14pt; border-radius: 50%; background: ${AMBER}; color: ${INK}; font-size: 9pt; font-weight: 800; flex: none; }
 h2:first-of-type { margin-top: 4pt; }
+h2 + p { break-after: avoid; }
+p { orphans: 3; widows: 3; }
 ul { margin: 1.5pt 0 3.5pt; padding-left: 12pt; } li { margin: 0 0 1.8pt; }
 table { border-collapse: collapse; width: 100%; margin: 3pt 0 5pt; font-size: 9pt; line-height: 1.28; break-inside: avoid; }
 th, td { border: 0.5pt solid #cdbf9f; padding: 1.6pt 3.5pt; text-align: left; vertical-align: top; }
@@ -84,7 +86,7 @@ pre { font: 8.6pt/1.25 Menlo, "SF Mono", Consolas, monospace; background: #f6f1e
 code { font: 8.6pt Menlo, "SF Mono", Consolas, monospace; background: #f3ecdc; padding: 0 1.2pt; border-radius: 2pt; }
 pre code { background: none; padding: 0; font-size: inherit; }
 a { color: #8a4b00; text-decoration: underline; text-decoration-color: ${AMBER}; text-underline-offset: 1.5pt; word-break: break-all; }
-mark { background: #ffe39a; padding: 0 1pt; }
+mark { background: #ffe39a; padding: 0 1pt; white-space: nowrap; }
 figure.diagram { margin: 3pt 0 4pt; } figure.diagram svg { width: 100%; height: auto; display: block; }
 .keep { break-inside: avoid; }
 `;
@@ -142,7 +144,7 @@ export async function render(options: { png?: boolean } = {}): Promise<RenderRes
       `[...document.querySelectorAll("pre, table, td, th, code, figure svg")].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.tagName.toLowerCase() + ": " + (e.textContent || "").slice(0, 40))`,
     )) as string[];
     const footer = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:8pt;color:#6b5f50;width:100%;padding:0 15mm;display:flex;justify-content:space-between;-webkit-print-color-adjust:exact"><span>Forge · Team ${team.team} · Techfest 2026-27 TrueFoundry Forge-a-thon</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
-    await tab.pdf({ path: OUTPUT, format: "A4", printBackground: true, margin: { top: "14mm", bottom: "15mm", left: "15mm", right: "15mm" }, displayHeaderFooter: true, headerTemplate: "<div></div>", footerTemplate: footer });
+    await tab.pdf({ path: OUTPUT, format: "A4", preferCSSPageSize: true, printBackground: true, displayHeaderFooter: true, headerTemplate: "<div></div>", footerTemplate: footer });
   } finally {
     await browser.close();
   }
@@ -151,7 +153,10 @@ export async function render(options: { png?: boolean } = {}): Promise<RenderRes
   const pages = Number((await exec(tool, ["pages", OUTPUT])).stdout.trim());
   const text = (await exec(tool, ["text", OUTPUT], { maxBuffer: 20_000_000 })).stdout;
   const links = [...new Set((await exec(tool, ["links", OUTPUT])).stdout.split("\n").filter(Boolean).map((l) => l.split("\t")[1] ?? ""))];
-  const placeholders = [...new Set([...text.matchAll(/<[A-Za-z_]{3,}>|\{\{[A-Z_0-9]+\}\}|\[\[[^\]]+\]\]|TODO|TBD|XXX/g)].map((m) => m[0]))];
+  // PDFKit extracts an underscore as its own line ("<VIDEO" / "_" / "URL>"), so join the pieces before looking for the video placeholder
+  const flat = text.replace(/<VIDEO\s*_?\s*URL>/g, "<VIDEO_URL>");
+  const placeholders = [...new Set([...flat.matchAll(/<[A-Za-z_]{3,}>|\{\{[A-Z_0-9]+\}\}|\[\[[^\]]+\]\]|TODO|TBD|XXX/g)].map((m) => m[0]))];
+  if (team.videoUrl && flat.includes("<")) placeholders.push("a '<' character is still in the text layer");
   const raw = (await readFile(OUTPUT)).toString("latin1");
   const fontsEmbedded = /\/FontFile[23]?\b/.test(raw);
   const pngs: string[] = [];
