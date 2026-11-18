@@ -149,6 +149,7 @@ Rules the code enforces and tests check: no model provider is ever called from t
 | "No provider can be registered" | No key variable is set at all: `export DEEPSEEK_API_KEY=...` |
 | `scripts/verify-task-*.sh` says the fixture is missing | Run `scripts/setup-fixture.sh` (needs git and Python >= 3.9) |
 | Review diff shows no Accept/Reject buttons | Needs the setting `diffEditor.codeLens` (Forge enables it by default; Forge asks once if you turned it off). Fallbacks: **Forge: Review Hunks…**, the panel's buttons, `Cmd/Ctrl+Enter` |
+| Accept/Reject lenses are tiny when screen-recording | VS Code setting `editor.codeLensFontSize` (e.g. 15) |
 | Where are the logs? | Output panel -> **Forge**: every tool call with its reason, the TrueForge session id and URL; **Open in TrueForge** (panel header) opens the session |
 
 ## Limitations

@@ -594,6 +594,7 @@ async function main(): Promise<number> {
       },
     },
     "window.zoomLevel": 1,
+    "workbench.secondarySideBar.defaultVisibility": "hidden",
     "editor.codeLensFontSize": 15, // the per-hunk Accept/Reject lenses must be readable at 1080p after video compression
     "editor.minimap.enabled": false,
     "workbench.colorTheme": "Default Dark Modern",
@@ -626,6 +627,7 @@ async function main(): Promise<number> {
     await installOverlay(page);
     await runCommand(page, "Notifications: Clear All Notifications").catch(() => undefined);
     let frame = await openPanel(page);
+    await runCommand(page, "View: Close Secondary Side Bar").catch(() => undefined);
     // a wider Forge panel (the default side bar is narrow at 120% zoom): focus the side bar and grow it
     await runCommand(page, "View: Focus Side Bar").catch(() => undefined);
     for (let i = 0; i < 3; i++) await runCommand(page, "View: Increase Current View Size").catch(() => undefined);
