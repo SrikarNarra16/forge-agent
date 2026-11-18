@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 168" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="12.5">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1b1612"/></marker>
+  </defs>
+  <rect x="2" y="4" width="278" height="160" rx="8" fill="#fbf6ec" stroke="#1b1612" stroke-width="1.4"/>
+  <text x="14" y="23" font-weight="700" fill="#1b1612">VS Code extension (a TrueForge client only)</text>
+  <rect x="14" y="32" width="120" height="34" rx="5" fill="#fff" stroke="#b9a98c"/><text x="22" y="47" fill="#1b1612">Panel + inline edit</text><text x="22" y="60" fill="#6b5f50" font-size="11">AgentController, Stop</text>
+  <rect x="148" y="32" width="120" height="34" rx="5" fill="#fff" stroke="#b9a98c"/><text x="156" y="47" fill="#1b1612">Review UI</text><text x="156" y="60" fill="#6b5f50" font-size="11">diff, per-hunk CodeLens</text>
+  <rect x="14" y="76" width="254" height="34" rx="5" fill="#e8a33d" stroke="#1b1612"/><text x="22" y="91" font-weight="700" fill="#1b1612">Applier: the ONLY writer</text><text x="22" y="104" fill="#1b1612" font-size="11">one WorkspaceEdit = one undo step</text>
+  <rect x="14" y="120" width="254" height="34" rx="5" fill="#fff" stroke="#b9a98c"/><text x="22" y="135" fill="#1b1612">MCP server on 127.0.0.1 (bearer token)</text><text x="22" y="148" fill="#6b5f50" font-size="11">read, search, symbols, run_command, propose_edit</text>
+
+  <rect x="322" y="4" width="196" height="160" rx="8" fill="#1b1612"/>
+  <text x="334" y="23" font-weight="700" fill="#e8a33d">TrueForge (local mode)</text>
+  <text x="334" y="46" fill="#fff7ea">sessions and turns (SDK, SSE)</text>
+  <text x="334" y="64" fill="#fff7ea">agent loop: forge-agent,</text><text x="334" y="79" fill="#fff7ea">forge-inline (agents/*.json)</text>
+  <text x="334" y="99" fill="#fff7ea">require_approval_for_tools</text>
+  <text x="334" y="117" fill="#fff7ea">deferred tool loading</text>
+  <text x="334" y="135" fill="#fff7ea">cancel, resume, Sessions UI</text>
+  <text x="334" y="153" fill="#d9c9ad" font-size="11">subagents, compaction: configured</text>
+
+  <rect x="562" y="40" width="152" height="84" rx="8" fill="#fbf6ec" stroke="#1b1612" stroke-width="1.4"/>
+  <text x="574" y="62" font-weight="700" fill="#1b1612">Model providers</text>
+  <text x="574" y="82" fill="#1b1612">DeepSeek, Gemini,</text><text x="574" y="98" fill="#1b1612">Groq (BYO keys),</text><text x="574" y="114" fill="#6b5f50" font-size="11">called by TrueForge only</text>
+
+  <path d="M282 52H320" stroke="#1b1612" stroke-width="1.6" marker-end="url(#a)"/><text x="284" y="46" font-size="10.5" fill="#6b5f50">turns</text>
+  <path d="M320 102H282" stroke="#1b1612" stroke-width="1.6" marker-end="url(#a)"/><text x="284" y="116" font-size="10.5" fill="#6b5f50">approval</text>
+  <path d="M320 138H282" stroke="#1b1612" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#a)"/><text x="284" y="152" font-size="10.5" fill="#6b5f50">MCP</text>
+  <path d="M520 82H560" stroke="#1b1612" stroke-width="1.6" marker-start="url(#a)" marker-end="url(#a)"/>
+</svg>
