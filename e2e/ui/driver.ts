@@ -47,13 +47,13 @@ export function assertFfmpeg(): void {
   if (!found) throw new Error("Playwright's ffmpeg is missing (needed for video). Run once: npx playwright-core install ffmpeg");
 }
 
-export async function launch(env: E2eEnvironment, options: { video: boolean; extraEnv?: Record<string, string> }): Promise<Launched> {
+export async function launch(env: E2eEnvironment, options: { video: boolean; extraEnv?: Record<string, string>; /** Run the INSTALLED extension (installed into env.extensions) instead of the development path. */ installed?: boolean }): Promise<Launched> {
   if (options.video) assertFfmpeg();
   const videoDir = join(ROOT, "e2e-output", "video");
   await mkdir(videoDir, { recursive: true });
   const app = await electron.launch({
     executablePath: vscodeExecutable(),
-    args: [...env.launchArgs, `--extensionDevelopmentPath=${ROOT}`],
+    args: options.installed ? env.launchArgs.filter((a) => a !== "--disable-extensions") : [...env.launchArgs, `--extensionDevelopmentPath=${ROOT}`],
     env: { ...(process.env as Record<string, string>), FORGE_RESOURCE_PREFIX: env.prefix, ...options.extraEnv },
     timeout: 90_000,
     ...(options.video ? { recordVideo: { dir: videoDir, size: { width: 1920, height: 1080 } } } : {}),
@@ -61,7 +61,7 @@ export async function launch(env: E2eEnvironment, options: { video: boolean; ext
   const page = await app.firstWindow({ timeout: 90_000 });
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
-    w?.setSize(1920, 1080);
+    w?.setContentSize(1920, 1080);
     w?.center();
   });
   await page.waitForSelector(".monaco-workbench", { timeout: 90_000 });

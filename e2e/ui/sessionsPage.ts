@@ -34,7 +34,7 @@ async function shot(page: Page, name: string, outDir = OUT): Promise<void> {
  *     close it, so a header that did not help is clicked again to restore it).
  * Returns whether the step is now in the page and scrolled into view.
  */
-async function scrollToListingTools(page: Page, stepMs = 450): Promise<boolean> {
+export async function scrollToListingTools(page: Page, stepMs = 450): Promise<boolean> {
   const listing = page.getByText(/Listing tools/).first();
   const scrollDown = async (): Promise<boolean> =>
     (await page.evaluate(`(() => {
