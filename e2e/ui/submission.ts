@@ -239,7 +239,7 @@ async function taskA(t: Take, env: E2eEnvironment, frame: Frame): Promise<{ undo
   await lens(t.page, /Accept hunk/).first().waitFor({ state: "visible", timeout: 120_000 });
   t.mark("A1:per-hunk-diff");
   await t.caption("Task A: per-hunk review — CodeLens “Accept hunk / Reject hunk” above each change");
-  await t.hold(4800);
+  await t.hold(4000);
   await acceptHunksOneByOne(t);
   await t.caption("Task A: both hunks accepted, then Apply");
   await t.hold(900);
@@ -285,6 +285,7 @@ async function taskB(t: Take, env: E2eEnvironment, frame: Frame): Promise<{ comm
     return st !== "" && !/^(Done|Error|Stopped|Ready)/.test(st);
   }, 60_000, 100);
   let firstDiff = false;
+  let fast = false; // from the first applied diff on, repeated review/approval cycles and waiting are shown at x3 (badge on screen)
   let commandsAllowed = 0;
   let reviews = 0;
   let contextShown = false;
@@ -295,7 +296,7 @@ async function taskB(t: Take, env: E2eEnvironment, frame: Frame): Promise<{ comm
 
     const allow = frame.locator(".approval button.primary:not([disabled])", { hasText: "Allow" }).first();
     if (await allow.isVisible().catch(() => false)) {
-      await t.fastForward(false);
+      await t.fastForward(fast && commandsAllowed > 0);
       if (commandsAllowed === 0) {
         t.mark("B:run_command-approval");
         await t.caption("Task B: run_command needs your approval — Allow");
@@ -307,7 +308,7 @@ async function taskB(t: Take, env: E2eEnvironment, frame: Frame): Promise<{ comm
 
     const row = frame.locator(".queue-row.state-reviewing").first();
     if (await row.isVisible().catch(() => false)) {
-      await t.fastForward(false);
+      await t.fastForward(fast);
       await row.click();
       await diffLensOrReopen(t.page, row);
       if (!firstDiff) {
@@ -322,7 +323,7 @@ async function taskB(t: Take, env: E2eEnvironment, frame: Frame): Promise<{ comm
           contextShown = (await frame.locator(".ctx-reason").count().catch(() => 0)) > 0;
           t.mark("B1:context-section");
           await t.caption("Task B: Context — the files chosen and why, with the token budget");
-          await t.hold(6500);
+          await t.hold(5500);
           await ctx.locator("summary").click({ timeout: 5000 }).catch(() => undefined); // collapse again so the queue stays visible
         }
         await t.page.keyboard.press(`${MOD}+ArrowUp`).catch(() => undefined);
@@ -332,8 +333,9 @@ async function taskB(t: Take, env: E2eEnvironment, frame: Frame): Promise<{ comm
       }
       await applyAll(t.page, frame);
       reviews++;
+      fast = true;
       await waitDiffClosed(t.page, frame);
-      await t.caption("Task B: working… (waiting is shown at x3 from here)");
+      await t.caption("Task B: the agent keeps working: reviews, approvals and waiting at x3");
       continue;
     }
 

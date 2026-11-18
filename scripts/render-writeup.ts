@@ -63,9 +63,10 @@ const CSS = `
 * { box-sizing: border-box; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body { font: 9.6pt/1.36 "Helvetica Neue", Helvetica, Arial, sans-serif; color: ${INK}; margin: 0; background: #fff; counter-reset: sec; }
-.band { background: ${INK}; color: #fff7ea; margin: -14mm -15mm 4.5mm; padding: 10mm 15mm 6mm; display: flex; justify-content: space-between; align-items: flex-end; }
+.band { background: ${INK}; color: #fff7ea; margin: -14mm -15mm 4.5mm; padding: 17mm 15mm 6mm; display: flex; justify-content: space-between; align-items: flex-end; gap: 8mm; }
+.band > div { min-width: 0; }
 .band .name { font-size: 27pt; font-weight: 800; letter-spacing: .5pt; color: ${AMBER}; line-height: 1; }
-.band .tag { font-size: 10pt; color: #d9c9ad; margin-top: 3pt; }
+.band .tag { font-size: 9.5pt; color: #d9c9ad; margin-top: 3pt; }
 .band .team { text-align: right; font-size: 11pt; font-weight: 700; line-height: 1.35; }
 .band .team span { display: block; font-weight: 400; font-size: 9pt; color: #d9c9ad; }
 p { margin: 0 0 3.5pt; }
@@ -73,7 +74,7 @@ h2 { counter-increment: sec; font-size: 11.5pt; margin: 8pt 0 3.5pt; padding-bot
 h2::before { content: counter(sec); display: inline-flex; align-items: center; justify-content: center; width: 14pt; height: 14pt; border-radius: 50%; background: ${AMBER}; color: ${INK}; font-size: 9pt; font-weight: 800; flex: none; }
 h2:first-of-type { margin-top: 4pt; }
 ul { margin: 1.5pt 0 3.5pt; padding-left: 12pt; } li { margin: 0 0 1.8pt; }
-table { border-collapse: collapse; width: 100%; margin: 3pt 0 5pt; font-size: 9pt; line-height: 1.28; }
+table { border-collapse: collapse; width: 100%; margin: 3pt 0 5pt; font-size: 9pt; line-height: 1.28; break-inside: avoid; }
 th, td { border: 0.5pt solid #cdbf9f; padding: 1.6pt 3.5pt; text-align: left; vertical-align: top; }
 thead th { background: ${INK}; color: #fff7ea; border-color: ${INK}; }
 tbody tr:nth-child(even) td { background: #faf4e6; }
@@ -115,7 +116,9 @@ export async function render(options: { png?: boolean } = {}): Promise<RenderRes
   const found = [...md.matchAll(/^## (.+)$/gm)].map((m) => m[1] as string);
   const headingsOk = found.length === HEADINGS.length && found.every((h, i) => h === HEADINGS[i]);
   const sub: Record<string, string> = { TEAM: team.team, TEAM_ID: team.teamId, COMPETITION_ID: team.competitionId, MEMBER: team.member, GITHUB: team.github, COLLEGE: team.college, REPO: team.repo };
-  md = md.replace(/\{\{([A-Z_]+)\}\}/g, (m, k: string) => sub[k] ?? m);
+  const factsFile = join(ROOT, "docs", "writeup", "facts.json");
+  const facts = existsSync(factsFile) ? (JSON.parse(await readFile(factsFile, "utf8")) as Record<string, string>) : {};
+  md = md.replace(/\{\{([A-Z_0-9]+)\}\}/g, (m, k: string) => sub[k] ?? facts[k] ?? m);
   const videoToken = "\u0001VIDEOURL\u0001";
   md = md.split("<VIDEO_URL>").join(videoToken);
   let html = await marked.parse(md);
@@ -123,7 +126,7 @@ export async function render(options: { png?: boolean } = {}): Promise<RenderRes
   html = html.split(videoToken).join(videoHtml);
   const diagram = existsSync(DIAGRAM) ? await readFile(DIAGRAM, "utf8") : "";
   html = html.replace("<!--DIAGRAM-->", `<figure class="diagram">${diagram}</figure>`);
-  const band = `<div class="band"><div><div class="name">Forge</div><div class="tag">A coding agent for VS Code whose agent loop runs on TrueForge</div></div><div class="team">Team ${team.team} · ${team.teamId}<span>TrueFoundry Forge-a-thon · Techfest IIT Bombay 2026-27</span></div></div>`;
+  const band = `<div class="band"><div><div class="name">Forge</div><div class="tag">A coding agent for VS Code; the agent loop runs on TrueForge</div></div><div class="team">Team ${team.team} · ${team.teamId}<span>TrueFoundry Forge-a-thon · Techfest 2026-27</span></div></div>`;
   const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Forge write-up · Team ${team.team}</title><style>${CSS}</style></head><body>${band}${html}</body></html>`;
 
   const exe = process.env["CHROME_EXE"];
@@ -148,7 +151,7 @@ export async function render(options: { png?: boolean } = {}): Promise<RenderRes
   const pages = Number((await exec(tool, ["pages", OUTPUT])).stdout.trim());
   const text = (await exec(tool, ["text", OUTPUT], { maxBuffer: 20_000_000 })).stdout;
   const links = [...new Set((await exec(tool, ["links", OUTPUT])).stdout.split("\n").filter(Boolean).map((l) => l.split("\t")[1] ?? ""))];
-  const placeholders = [...new Set([...text.matchAll(/<[A-Za-z_]{3,}>|\{\{[A-Z_]+\}\}|\[\[[^\]]+\]\]|TODO|TBD|XXX/g)].map((m) => m[0]))];
+  const placeholders = [...new Set([...text.matchAll(/<[A-Za-z_]{3,}>|\{\{[A-Z_0-9]+\}\}|\[\[[^\]]+\]\]|TODO|TBD|XXX/g)].map((m) => m[0]))];
   const raw = (await readFile(OUTPUT)).toString("latin1");
   const fontsEmbedded = /\/FontFile[23]?\b/.test(raw);
   const pngs: string[] = [];
