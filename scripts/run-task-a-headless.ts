@@ -111,7 +111,10 @@ class Sink implements UiSink {
   onTurnChange(view: TurnView): void {
     this.view = view;
   }
-  onSession(): void {}
+  readonly sessions: string[] = [];
+  onSession(info: { sessionId: string }): void {
+    this.sessions.push(info.sessionId);
+  }
   onNotice(level: string, text: string): void {
     this.notices.push(`${level}: ${text}`);
   }
@@ -177,12 +180,33 @@ async function main(): Promise<void> {
     return { agents: agents.sort(), mcp: (await client.settings.mcpServers.list()).data.map((m) => m.name).sort() };
   };
   const createdSessions: string[] = [];
+  let tokensIn = 0;
+  let tokensOut = 0;
   let agentAttempted = false;
   let mcpRegistered = false;
   let cleaned = false;
   const cleanup = async (): Promise<void> => {
     if (cleaned) return;
     cleaned = true;
+    // Token usage from TrueForge's own turn records, read BEFORE the sessions are deleted (also counts failed turns).
+    // TrueForge writes a turn's metrics a moment after the turn ends, so wait for them (up to ~8 s per session).
+    for (const id of createdSessions) {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const turns = ((await (await fetch(`${BASE_URL}/api/v1/sessions/${id}/turns`).catch(() => undefined))?.json().catch(() => undefined)) as { data?: Array<{ state?: { status?: string; metrics?: { total_tokens?: number } } }> } | undefined)?.data ?? [];
+        if (turns.some((t) => (t.state?.metrics?.total_tokens ?? 0) > 0) || turns.every((t) => t.state?.status === "error")) break;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/sessions/${id}/turns`, { signal: AbortSignal.timeout(15_000) });
+        const turns = ((await res.json()) as { data: Array<{ state?: { metrics?: { total_input_tokens?: number; total_output_tokens?: number } } }> }).data;
+        for (const t of turns) {
+          tokensIn += t.state?.metrics?.total_input_tokens ?? 0;
+          tokensOut += t.state?.metrics?.total_output_tokens ?? 0;
+        }
+      } catch {
+        /* usage is best effort */
+      }
+    }
     for (const id of createdSessions) await client.sessions.delete(id).catch(() => undefined);
     if (agentAttempted) {
       assertThrowaway(AGENT);
@@ -269,7 +293,7 @@ async function main(): Promise<void> {
       const result = await controller.send(message, { freshSession: true, agentName: AGENT, display: inlineDisplayText(snap.snapshot, INSTRUCTION), purpose: "task-a-headless" });
       clearTimeout(timer);
       const seconds = (Date.now() - started) / 1000;
-      if (controller.sessionId) createdSessions.push(controller.sessionId);
+      for (const id of [...sink.sessions, ...(controller.sessionId ? [controller.sessionId] : [])]) if (!createdSessions.includes(id)) createdSessions.push(id); // every session of the run (a fallback creates more than one)
 
       const view = sink.view;
       const calls = (view?.toolCalls ?? []).map((c) => c.name);
@@ -323,6 +347,7 @@ async function main(): Promise<void> {
   log(JSON.stringify(before) === JSON.stringify(after) ? "CLEANUP OK: TrueForge state is identical to before." : "WARNING: state differs from before; inspect manually.");
 
   const passed = reports.filter((r) => r.pass).length;
+  log(`\nTOKENS: input=${tokensIn} output=${tokensOut}`);
   log(`\nRESULT: ${passed}/${reports.length} runs passed (model ${model})`);
   log("\n| Run | Model | Result | Notes |\n|---|---|---|---|");
   for (const r of reports) log(`| ${r.run} | ${model} | ${r.pass ? "PASS" : "FAIL"} | ${r.seconds.toFixed(0)}s; ${r.tools}; ${r.pass ? `hunks=${r.hunks ?? "?"}` : `failing: ${r.failing.join(", ")}`} |`);

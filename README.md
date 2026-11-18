@@ -6,6 +6,8 @@ Forge is a VS Code extension. You describe a change (in the **Forge** panel, or 
 - Editor capabilities (read a file, search, symbols, diagnostics, propose an edit, run a command) are MCP tools that the extension serves on localhost (bearer-token protected) and registers in TrueForge. `propose_edit` / `create_file` are gated by TrueForge's tool approval, which opens the diff review; accepting applies the hunks as ONE undo step.
 - Stop is instant and leaves no half-applied edits. If a model provider fails, Forge continues the same request on the next configured model.
 
+**Starting point:** Built from scratch; no upstream fork. (No code from Cline, Continue, Roo Code, opencode or any other agent was copied; the runtime dependencies are `@truefoundry/trueforge-sdk`, `@modelcontextprotocol/sdk`, `diff`, `ignore` and `zod`.)
+
 ## Quick start (5 lines)
 
 ```bash
@@ -54,6 +56,19 @@ npm run tf:setup                   # idempotent: creates or replaces the provide
 ```
 
 A provider whose key variable is not set is skipped with a message. To change providers or models, copy the file to `trueforge/models.local.json` (gitignored) and edit it; `tf:setup` prefers it. The model names Forge uses are `provider/model`, e.g. `deepseek/flash` (setting `forge.models`, or **Forge: Switch Model**).
+
+### Which models work
+
+The organisers may pick the model, so Task A was run headlessly once per model registered in TrueForge, twice over (details, failure texts and timings: [`docs/model-matrix.md`](docs/model-matrix.md)):
+
+| Status | Models |
+|---|---|
+| **Supported** (passed both passes) | `deepseek/flash` (default), `deepseek/v4-pro`, `google-gemini/gemini-3-1-flash-lite`, `google-gemini/gemini-3-5-flash-lite`, `google-gemini/gemini-flash-lite-latest` |
+| Works but slow / intermittent (provider overload) | `google-gemini/gemma-4-26b-a4b-it`, `google-gemini/gemma-4-31b-it` (passed in one pass after 2.5 min, 503 in the other) |
+| Not usable at the time of testing | `google-gemini/gemini-3-5-flash`, `-3-6-flash`, `-3-7-flash`, `-3-8-flash`, `gemini-flash-latest` (provider 503 "high demand"); `google-gemini/gemini-3-1-pro-preview` (429: free-tier quota 0 for this key) |
+| **Unsupported** | `groq/gpt-oss-120b`: TrueForge replays the assistant message with `reasoning_content` and Groq answers HTTP 400 (`'messages.2' ... property 'reasoning_content' is unsupported`) |
+
+A failing model shows its provider message in the panel (the model is named); the workspace is untouched, and with a second model in `forge.models` the run continues there. Switch models with **Forge: Switch Model** or the `forge.models` setting (first entry is used). Task B was evaluated on the DeepSeek models only (`docs/eval-results.md`).
 
 ## 3. Agents
 
