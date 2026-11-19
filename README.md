@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner.png" alt="Forge: a coding agent for VS Code, running on TrueForge. Team Monarch, Techfest 2026-27, TrueFoundry Forge-a-thon" width="900">
+  <img src="docs/images/banner.png" alt="Forge: a coding agent for VS Code, running on TrueForge" width="900">
 </p>
 
 <p align="center">
@@ -10,7 +10,7 @@
   <a href="https://trueforge.dev"><img src="https://img.shields.io/badge/runs%20on-TrueForge-e8a33d" alt="Runs on TrueForge"></a>
 </p>
 
-# Forge: a coding agent for VS Code, running on TrueForge
+# Describe a change. Review it hunk by hunk. Nothing is written until you accept.
 
 Forge is a VS Code extension. You describe a change (in the **Forge** panel, or by selecting code and pressing `Cmd/Ctrl+Alt+K`); an agent that runs on [TrueForge](https://trueforge.dev) (local mode) reads your project, proposes edits, and **nothing is written to disk until you have reviewed the diff** hunk by hunk.
 
