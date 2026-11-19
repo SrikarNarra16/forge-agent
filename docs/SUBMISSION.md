@@ -2,35 +2,22 @@
 
 **Deadline: 20 Nov 2026, 23:59 IST.** Team **Monarch** · Team ID **TM-2C05ECD8CA7** · Competition ID **TFF-354B31310FE8** · member: Narra Srikar (team leader, solo).
 
-## Links to paste in the Techfest Competition Portal
+## Final links to paste in the Techfest Competition Portal
 | Field | Value |
 |---|---|
 | Public repository (MIT) | https://github.com/SrikarNarra16/forge-agent |
-| Demo video (YouTube, Unlisted) | `<VIDEO_URL>` (fill in after the upload, see below) |
-| Write-up (PDF, GitHub blob URL; opens in the browser, no login) | https://github.com/SrikarNarra16/forge-agent/blob/main/Forge-writeup.pdf |
-| Write-up, direct file | https://raw.githubusercontent.com/SrikarNarra16/forge-agent/main/Forge-writeup.pdf |
+| Demo video (YouTube) | https://www.youtube.com/watch?v=lORzwHJEggQ |
+| Write-up PDF (GitHub blob URL; opens in the browser, no login) | https://github.com/SrikarNarra16/forge-agent/blob/main/Forge-writeup.pdf |
+| Team ID | TM-2C05ECD8CA7 (competition TFF-354B31310FE8) |
 | Release tag | `v1.0.0-round1` |
 
-Checked on 18 Nov 2026 with `curl`, no credentials: repo 200, PDF blob URL 200, raw PDF URL 200 (`%PDF-`). CI is green on the tagged commit.
+Checked with `curl`, no credentials: repo 200, PDF blob URL 200, raw PDF URL (https://raw.githubusercontent.com/SrikarNarra16/forge-agent/main/Forge-writeup.pdf) 200 and a valid 3-page PDF identical to the committed file; the video's public oEmbed endpoint answers 200 (title "Forge: a VS Code coding agent on TrueForge (Team Monarch, Forge-a-thon)"), so it is public or unlisted. CI is green on the tagged commit.
 
-## What YOU do by hand (the only manual steps)
-1. **Upload the video.** File: `e2e-output/video/forge-round1-submission.mp4` (H.264, 1920x1080, under 4 minutes; it is gitignored, so it is only on this machine).
-   1. studio.youtube.com -> **Create** -> **Upload videos** -> choose the MP4.
-   2. Title and description: `docs/social-post.md` ("YouTube" section). Audience: "No, it's not made for kids".
-   3. Visibility: **Unlisted** (NOT Private: judges cannot open Private videos).
-   4. Wait until processing says HD is available, copy the link (`https://youtu.be/...`).
-   5. **Test the link in a private/incognito window while logged out**: it must play, at 1080p, and show a length under 4:00.
-2. **Run the single finish command** (puts the link into the PDF, re-renders it, re-checks the 3-page limit and that no placeholder text is left):
-   ```bash
-   npm run writeup:set-url -- https://youtu.be/XXXXXXXX
-   ```
-   Optional overrides if a fact is wrong: `--college "<name>"` (the draft says **FLAME University**, inferred from the registration e-mail domain: please confirm) and `--team-name "<name>"`.
-   Then commit and push the regenerated `Forge-writeup.pdf`:
-   ```bash
-   git add Forge-writeup.pdf docs/writeup/team.json && git commit -m "Write-up: video URL" && git push
-   ```
-3. **Test the PDF link logged out** (private window): https://github.com/SrikarNarra16/forge-agent/blob/main/Forge-writeup.pdf shows the PDF; the video link inside it is clickable.
-4. **Submit in the Techfest Competition Portal** with the three links above before the deadline. Do not paste any e-mail address into the write-up, the video or the repository.
+## What is left for you
+1. Open the video link in a private window while logged out and check it plays at 1080p and shows 3:30 (the oEmbed check only proves it is reachable, not that processing finished).
+2. Open the PDF blob URL logged out; the video link inside it is clickable.
+3. **Submit in the Techfest Competition Portal** with the three links above before **20 Nov 2026, 23:59 IST**. No e-mail address is in the write-up, the video or the repository.
+(If a fact in the PDF must change, for example the college, run `npm run writeup:set-url -- "https://www.youtube.com/watch?v=lORzwHJEggQ" --college "<name>"`, then commit and push `Forge-writeup.pdf`, `README.md` and `docs/writeup/team.json`. The draft says FLAME University, inferred from the registration e-mail domain.)
 
 ## What is already done
 - Repository public, MIT licence, clean-clone setup in the README, example model config (`trueforge/models.example.json`, no keys anywhere), tag `v1.0.0-round1`, CI (build, typecheck, lint, unit tests).
