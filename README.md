@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner.svg" alt="Forge: a coding agent for VS Code, running on TrueForge. Team Monarch, Techfest 2026-27, TrueFoundry Forge-a-thon" width="900">
+  <img src="docs/images/banner.png" alt="Forge: a coding agent for VS Code, running on TrueForge. Team Monarch, Techfest 2026-27, TrueFoundry Forge-a-thon" width="900">
 </p>
 
 <p align="center">
