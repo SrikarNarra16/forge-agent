@@ -269,7 +269,8 @@
     "video:duration": "tsx e2e/ui/videoDuration.ts",
     "e2e:rehearsal": "tsx e2e/ui/run.ts rehearsal",
     "video:take": "tsx e2e/ui/submission.ts",
-    "writeup:set-url": "tsx scripts/writeup-set-url.ts"
+    "writeup:set-url": "tsx scripts/writeup-set-url.ts",
+    "readme:preview": "tsx scripts/readme-preview.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

@@ -1,10 +1,22 @@
 /**
- * Fills the video URL (and optionally the college and team name) into the write-up facts, re-renders Forge-writeup.pdf and
+ * Fills the video URL (and optionally the college and team name) into the write-up facts and the README's demo link, re-renders Forge-writeup.pdf and
  * re-checks it: at most 3 pages, the 8 headings, and NO placeholder text left in the PDF text layer.
  *
  *   npm run writeup:set-url -- https://youtu.be/XXXX [--college "FLAME University"] [--team-name "Monarch"]
  */
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { readTeam, render, writeTeam } from "./render-writeup";
+
+/** Rewrites the video block of README.md (between the video:start / video:end markers) for the given URL. */
+async function updateReadme(url: string): Promise<void> {
+  const file = join(__dirname, "..", "README.md");
+  const text = await readFile(file, "utf8");
+  const block = `<!-- video:start -->\n**[Watch the demo video (3:30, under the 4-minute limit)](${url})**: ${url}\n<!-- video:end -->`;
+  const next = text.replace(/<!-- video:start -->[\s\S]*?<!-- video:end -->/, () => block);
+  if (next === text && !text.includes(url)) throw new Error("README.md has no video:start / video:end block");
+  await writeFile(file, next, "utf8");
+}
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
@@ -26,6 +38,7 @@ async function main(): Promise<number> {
   if (college) team.college = college;
   if (teamName) team.team = teamName;
   await writeTeam(team);
+  await updateReadme(url);
   const r = await render({ png: process.env["WRITEUP_PNG"] === "1" });
   const leftover = r.placeholders.length;
   console.log(`\nVideo URL set to ${url}. Pages: ${r.pages}. Placeholder text left in the PDF: ${leftover === 0 ? "none" : r.placeholders.join(" ")}. The URL is a clickable link: ${r.links.includes(url)}.`);
