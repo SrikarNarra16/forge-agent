@@ -32,7 +32,7 @@ Forge is a VS Code extension. You describe a change (in the **Forge** panel, or 
 ## Demo
 
 <!-- video:start -->
-**[Watch the demo video (3:30, under the 4-minute limit)](<VIDEO_URL>)**: `<VIDEO_URL>`
+**[Watch the demo video (3:30, under the 4-minute limit)](https://www.youtube.com/watch?v=lORzwHJEggQ)**: https://www.youtube.com/watch?v=lORzwHJEggQ
 <!-- video:end -->
 
 The video is an automated, scripted run of the real extension with captions and no narration: Task A (inline edit, per-hunk review, one-step undo), Task B (agent mode, no files named), Task C (unreachable endpoint, automatic fallback) and Stop. Its plan is in [`docs/recording/shot-list.md`](docs/recording/shot-list.md).
